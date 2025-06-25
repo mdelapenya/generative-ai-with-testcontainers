@@ -11,9 +11,16 @@ import (
 	"syscall"
 
 	"github.com/testcontainers/testcontainers-go"
-	tcollama "github.com/testcontainers/testcontainers-go/modules/ollama"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+const (
+	modelNamespace = "ai"
+	modelName      = "llama3.2"
+	modelTag       = "1B-Q4_0"
+	fqModelName    = modelNamespace + "/" + modelName + ":" + modelTag
 )
 
 func main() {
@@ -23,30 +30,26 @@ func main() {
 }
 
 func run() (err error) {
-	c, err := tcollama.Run(context.Background(), "mdelapenya/llama3.2:0.5.4-1b", testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Name: "chat-model",
-		},
-		Reuse: true,
-	}))
+	dmrCtr, err := dmr.Run(context.Background(), dmr.WithModel(fqModelName), testcontainers.WithReuseByName("chat-model"))
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err = testcontainers.TerminateContainer(c)
+		err = testcontainers.TerminateContainer(dmrCtr)
 		if err != nil {
 			err = fmt.Errorf("terminate container: %w", err)
 		}
 	}()
 
-	ollamaURL, err := c.ConnectionString(context.Background())
-	if err != nil {
-		return fmt.Errorf("connection string: %w", err)
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithModel(fqModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
 	}
 
-	llm, err := ollama.New(ollama.WithModel("llama3.2:1b"), ollama.WithServerURL(ollamaURL))
+	llm, err := openai.New(opts...)
 	if err != nil {
-		return fmt.Errorf("ollama new: %w", err)
+		log.Fatal(err)
 	}
 
 	// listen for interrupt signals to end the chat session gracefully
