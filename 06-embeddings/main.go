@@ -45,7 +45,7 @@ func run() (err error) {
 
 	llm, err := openai.New(opts...)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("openai new: %w", err)
 	}
 
 	embedder, err := embeddings.NewEmbedder(llm)
@@ -62,7 +62,7 @@ func run() (err error) {
 
 	vecs, err := embedder.EmbedDocuments(context.Background(), docs)
 	if err != nil {
-		log.Fatal("embed query", err)
+		return fmt.Errorf("embed query: %w", err)
 	}
 
 	fmt.Println("Similarities:")
