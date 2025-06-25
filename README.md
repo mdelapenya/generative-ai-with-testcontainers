@@ -37,6 +37,16 @@ cd 1-hello-world
 go run .
 ```
 
+## Local Models
+
+All the Local images used in these example projects are available on Docker Hub under the [GenAI Catalog](https://hub.docker.com/catalogs/gen-ai). These are the models used in the examples:
+
+- `ai/llama3.2:1B-Q4_0`: used for building chats.
+- `ai/qwen3:0.6B-Q4_0`: used for building chats.
+- `ai/mxbai-embed-large:335M-F16`: used for generating embeddings.
+
+You can pull them all using the `pull-models.sh` script.
+
 ## Docker Images
 
 All the Docker images used in these example projects are available on Docker Hub under the https://hub.docker.com/u/mdelapenya repository. They have been built using an automated process in GitHub Actions, and you can find the source code in the following Github repository: https://github.com/mdelapenya/dockerize-ollama-models.
