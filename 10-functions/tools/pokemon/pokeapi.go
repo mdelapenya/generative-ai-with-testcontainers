@@ -8,9 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/tmc/langchaingo/callbacks"
-	"github.com/tmc/langchaingo/tools"
 )
 
 // pokemonResponse is the struct that represents the response from the PokeAPI.
@@ -30,59 +27,9 @@ type pokemonResponse struct {
 	} `json:"types"`
 }
 
-// Tool is an implementation of the tool interface that finds information using PokeAPI (https://pokeapi.co/).
-type Tool struct {
-	callbacksHandler callbacks.Handler
-}
-
-// Implement the tools.Tool interface.
-var _ tools.Tool = Tool{}
-
-// New creates a new PokeAPI tool.
-func New() Tool {
-	return Tool{
-		callbacksHandler: callbacks.LogHandler{},
-	}
-}
-
-// Name returns the name of the tool. This is used by the LLM to identify the tool.
-func (t Tool) Name() string {
-	return "PokeAPI"
-}
-
-// Description returns a description of the tool. This is used by the LLM to understand what the tool does.
-func (t Tool) Description() string {
-	return `A wrapper around PokeAPI. 
-	Useful for when you need to answer general questions about pokemons. 
-	Input should be a pokemon name in lowercase, without quotes.`
-}
-
-// Call sums up the numbers in the input and returns the result.
-func (t Tool) Call(ctx context.Context, input string) (string, error) {
-	if t.callbacksHandler != nil {
-		t.callbacksHandler.HandleToolStart(ctx, input)
-	}
-
-	result, err := FetchAPI(input)
-	if err != nil {
-		if t.callbacksHandler != nil {
-			t.callbacksHandler.HandleToolError(ctx, err)
-		}
-		return "", err
-	}
-
-	if t.callbacksHandler != nil {
-		t.callbacksHandler.HandleToolEnd(ctx, result)
-	}
-
-	return result, nil
-}
-
 // FetchAPI fetches the pokemon information from PokeAPI. It returns a string with the pokemon information,
 // including the ID, the number of moves, the moves and the types.
-func FetchAPI(pokemon string) (s string, err error) {
-	ctx := context.Background()
-
+func FetchAPI(ctx context.Context, pokemon string) (s string, err error) {
 	baseApiUrl := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", strings.ToLower(pokemon))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", baseApiUrl, nil)
@@ -120,5 +67,5 @@ func FetchAPI(pokemon string) (s string, err error) {
 		typeNames = append(typeNames, t.Type.Name)
 	}
 
-	return fmt.Sprintf("ID: %d, MovesCount: %d, Moves: [%s], Types: [%s]", p.Id, len(moveNames), strings.Join(moveNames, ", "), strings.Join(typeNames, ", ")), nil
+	return fmt.Sprintf("ID: %d, Name: %s, MovesCount: %d, Moves: [%s], Types: [%s]", p.Id, p.Name, len(moveNames), strings.Join(moveNames, ", "), strings.Join(typeNames, ", ")), nil
 }

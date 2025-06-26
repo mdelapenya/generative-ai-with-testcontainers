@@ -2,14 +2,46 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
+	"github.com/mdelapenya/genai-testcontainers-go/functions/tools/pokemon"
 	"github.com/testcontainers/testcontainers-go"
-	tcollama "github.com/testcontainers/testcontainers-go/modules/ollama"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/openai"
 )
+
+const (
+	modelNamespace = "ai"
+	modelName      = "llama3.2"
+	modelTag       = "3B-Q4_K_M"
+	fqModelName    = modelNamespace + "/" + modelName + ":" + modelTag
+)
+
+var availableTools = []llms.Tool{
+	{
+		Type: "function",
+		Function: &llms.FunctionDefinition{
+			Name: "fetchPokeAPI",
+			Description: `A wrapper around PokeAPI. 
+			Useful for when you need to answer general questions about pokemon. 
+			You must call this function separately for each pokemon you want information about.
+			Input should be a single pokemon name in lowercase, without quotes.`,
+			Parameters: json.RawMessage(`{
+					"type": "object", 
+					"properties": {
+						"pokemon": {
+							"type": "string",
+							"description": "A single pokemon name in lowercase, without quotes. E.g. pikachu. When comparing multiple pokemon, call this function once for each pokemon."
+						}
+					}, 
+					"required": ["pokemon"]
+				}`),
+		},
+	},
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -18,85 +50,128 @@ func main() {
 }
 
 func run() (err error) {
-	const question string = "Which pokemon has more moves, Haunter or Gengar?"
+	const question string = "I have two pokemons, Gengar and Haunter. Please fetch information for both Gengar and Haunter individually so you can compare their move counts."
 
 	log.Printf("Question: %s", question)
 
-	var c *tcollama.OllamaContainer
-
 	// 3b model version is required to use Tools.
-	// See https://ollama.com/library/llama3.2
-	c, err = tcollama.Run(context.Background(), "mdelapenya/llama3.2:0.5.4-3b", testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Name: "chat-model",
-		},
-		Reuse: true,
-	}))
+	// See https://hub.docker.com/r/ai/llama3.2
+	dmrCtr, err := dmr.Run(context.Background(), dmr.WithModel(fqModelName), testcontainers.WithReuseByName("chat-model"))
 	if err != nil {
 		return err
 	}
 	defer func() {
-		terminateErr := testcontainers.TerminateContainer(c)
+		err = testcontainers.TerminateContainer(dmrCtr)
+		if err != nil {
+			err = fmt.Errorf("terminate container: %w", err)
+		}
+	}()
+	defer func() {
+		terminateErr := testcontainers.TerminateContainer(dmrCtr)
 		if terminateErr != nil {
 			err = fmt.Errorf("terminate container: %w", terminateErr)
 		}
 	}()
 
-	ollamaURL, connErr := c.ConnectionString(context.Background())
-	if connErr != nil {
-		err = fmt.Errorf("connection string: %w", connErr)
-		return
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithModel(fqModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
 	}
 
-	llm, ollamaErr := ollama.New(
-		ollama.WithModel("llama3.2:3b"),
-		ollama.WithServerURL(ollamaURL),
-	)
-	if ollamaErr != nil {
-		err = fmt.Errorf("ollama new: %w", ollamaErr)
-		return
+	llm, err := openai.New(opts...)
+	if err != nil {
+		return fmt.Errorf("openai.New: %w", err)
 	}
 
-	var msgs []llms.MessageContent
+	messageHistory := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeHuman, question),
+		llms.TextParts(llms.ChatMessageTypeSystem, `You are a helpful Pokemon assistant. When asked to compare multiple Pokemon, you MUST:
+1. Call fetchPokeAPI once for EACH Pokemon mentioned
+2. Only after getting information for ALL Pokemon, provide your comparison
+3. Never make assumptions - always get data for each Pokemon individually.
 
-	// system message defines the available tools.
-	msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeSystem, systemMessage()))
-	msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeHuman, question))
+As an example, if the user asks for Gengar and Haunter, you must call fetchPokeAPI twice, once for Gengar and once for Haunter.
+`),
+	}
 
 	ctx := context.Background()
 
-	response := ""
-
 	for retries := 3; retries > 0; retries = retries - 1 {
-		resp, err := llm.GenerateContent(ctx, msgs)
+		resp, err := llm.GenerateContent(ctx, messageHistory,
+			llms.WithTools(availableTools),
+			llms.WithTemperature(0.1), // Lower temperature for more consistent behavior
+			llms.WithTopP(0.9),        // Adjust for better function calling
+		)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("generateContent (%d): %w", retries, err)
 		}
 
-		choice1 := resp.Choices[0]
-		msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeAI, choice1.Content))
+		respchoice := resp.Choices[0]
 
-		if cs := unmarshalCall(choice1.Content); cs != nil {
-			for _, c := range cs {
-				msg, cont := dispatchCall(&c)
-				if !cont {
-					retries = 0
-					response = msg.Parts[0].(llms.TextContent).Text
-					break
-				}
-				msgs = append(msgs, msg)
-			}
-		} else {
-			// Ollama doesn't always respond with a function call, let it try again.
-			msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeHuman, "Sorry, I don't understand. Please try again."))
+		assistantResponse := llms.TextParts(llms.ChatMessageTypeAI, respchoice.Content)
+		for _, tc := range respchoice.ToolCalls {
+			assistantResponse.Parts = append(assistantResponse.Parts, tc)
 		}
+		messageHistory = append(messageHistory, assistantResponse)
+
+		toolsResponse, err := executeToolCalls(ctx, messageHistory, resp)
+		if err != nil {
+			return fmt.Errorf("executeToolCalls (%d): %w", retries, err)
+		}
+		messageHistory = append(messageHistory, toolsResponse...)
 	}
 
-	if response == "" {
-		log.Fatal("response is empty")
+	messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeHuman, "Can you compare the two?"))
+
+	// Send query to the model again, this time with a history containing its
+	// request to invoke a tool and our response to the tool call.
+	resp, err := llm.GenerateContent(ctx, messageHistory, llms.WithTools(availableTools))
+	if err != nil {
+		return fmt.Errorf("generateContent: %w", err)
 	}
 
-	log.Printf("Final response: %v", response)
+	fmt.Println(resp.Choices[0].Content)
 
 	return nil
+}
+
+// executeToolCalls executes the tool calls in the response and returns the
+// updated message history.
+func executeToolCalls(ctx context.Context, messageHistory []llms.MessageContent, resp *llms.ContentResponse) ([]llms.MessageContent, error) {
+	fmt.Println("Executing", len(resp.Choices[0].ToolCalls), "tool calls")
+	for _, toolCall := range resp.Choices[0].ToolCalls {
+		switch toolCall.FunctionCall.Name {
+		case "fetchPokeAPI":
+			var args struct {
+				Pokemon string `json:"pokemon"`
+			}
+			if err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args); err != nil {
+				log.Fatal("invalid input: ", err)
+			}
+
+			p, err := pokemon.FetchAPI(ctx, args.Pokemon)
+			if err != nil {
+				return nil, fmt.Errorf("fetchPokeAPI: %w", err)
+			}
+
+			pokeAPICallResponse := llms.MessageContent{
+				Role: llms.ChatMessageTypeTool,
+				Parts: []llms.ContentPart{
+					llms.ToolCallResponse{
+						ToolCallID: toolCall.ID,
+						Name:       toolCall.FunctionCall.Name,
+						Content:    p,
+					},
+				},
+			}
+
+			messageHistory = append(messageHistory, pokeAPICallResponse)
+
+		default:
+			return nil, fmt.Errorf("unsupported tool: %s", toolCall.FunctionCall.Name)
+		}
+	}
+
+	return messageHistory, nil
 }
