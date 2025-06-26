@@ -12,7 +12,7 @@ This project demonstrates how to use [Testcontainers for Golang](https://github.
 1. [`06-embeddings`](./06-embeddings): Contains an example of generating embeddings from text and calculating similarity between them.
 1. [`07-rag`](./07-rag): Contains an example of applying RAG (Retrieval-Augmented Generation) to generate better responses.
 1. [`08-testing`](./08-testing): Contains an example with the evolution of testing our Generative AI applications, from an old school approach to a more modern one using Evaluator Agents.
-1. [`09-huggingface`](./09-huggingface): Contains an example of using a HuggingFace model with Ollama.
+1. [`09-huggingface`](./09-huggingface): Contains an example of using a HuggingFace model with Docker Model Runner.
 1. [`10-functions`](./10-functions): Contains an example of using functions in a language model.
 
 ## Prerequisites
