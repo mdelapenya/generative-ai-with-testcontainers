@@ -2,6 +2,7 @@ package weaviate
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/testcontainers/testcontainers-go"
 	tcweaviate "github.com/testcontainers/testcontainers-go/modules/weaviate"
@@ -12,12 +13,12 @@ import (
 func NewStore(ctx context.Context, embedder embeddings.Embedder) (weaviate.Store, *tcweaviate.WeaviateContainer, error) {
 	ctr, err := tcweaviate.Run(ctx, "semitechnologies/weaviate:1.27.2", testcontainers.WithReuseByName("weaviate-db"))
 	if err != nil {
-		panic(err)
+		return weaviate.Store{}, nil, fmt.Errorf("run weaviate container: %w", err)
 	}
 
 	schema, host, err := ctr.HttpHostAddress(ctx)
 	if err != nil {
-		panic(err)
+		return weaviate.Store{}, nil, fmt.Errorf("get weaviate container address: %w", err)
 	}
 
 	s, err := weaviate.New(
