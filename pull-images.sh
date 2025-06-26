@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 readonly OLLAMA_VERSION="0.5.4"
 

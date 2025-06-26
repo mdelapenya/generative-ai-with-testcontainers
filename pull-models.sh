@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 docker model pull ai/llama3.2:1B-Q4_0 &
 docker model pull ai/llama3.2:3B-Q4_K_M &
