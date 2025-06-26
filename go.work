@@ -1,4 +1,4 @@
-go 1.23
+go 1.23.6
 
 use (
 	./01-hello-world

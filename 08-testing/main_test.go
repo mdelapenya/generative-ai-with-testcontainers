@@ -8,11 +8,13 @@ import (
 
 	"github.com/chewxy/math32"
 	"github.com/mdelapenya/genai-testcontainers-go/testing/ai"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/tmc/langchaingo/embeddings"
 )
 
 func Test1_oldSchool(t *testing.T) {
-	chatModel, err := buildChatModel()
+	chatModel, chatCtr, err := buildChatModel()
+	testcontainers.CleanupContainer(t, chatCtr)
 	if err != nil {
 		t.Fatalf("build chat model: %s", err)
 	}
@@ -38,7 +40,8 @@ func Test1_oldSchool(t *testing.T) {
 		})
 
 		t.Run("ragged-answer", func(tt *testing.T) {
-			answer, err := raggedAnswer(chatModel)
+			answer, embeddingsCtr, err := raggedAnswer(chatModel)
+			testcontainers.CleanupContainer(tt, embeddingsCtr)
 			if err != nil {
 				tt.Fatalf("straight chat: %s", err)
 			}
@@ -58,7 +61,8 @@ func Test1_oldSchool(t *testing.T) {
 		})
 
 		t.Run("ragged-answer", func(tt *testing.T) {
-			answer, err := raggedAnswer(chatModel)
+			answer, embeddingsCtr, err := raggedAnswer(chatModel)
+			testcontainers.CleanupContainer(tt, embeddingsCtr)
 			if err != nil {
 				tt.Fatalf("straight chat: %s", err)
 			}
@@ -69,12 +73,14 @@ func Test1_oldSchool(t *testing.T) {
 }
 
 func Test2_embeddings(t *testing.T) {
-	chatModel, err := buildChatModel()
+	chatModel, chatCtr, err := buildChatModel()
+	testcontainers.CleanupContainer(t, chatCtr)
 	if err != nil {
 		t.Fatalf("build chat model: %s", err)
 	}
 
-	embeddingModel, err := buildEmbeddingModel()
+	embeddingModel, embeddingsCtr, err := buildEmbeddingModel()
+	testcontainers.CleanupContainer(t, embeddingsCtr)
 	if err != nil {
 		t.Fatalf("build embedding model: %s", err)
 	}
@@ -119,7 +125,8 @@ func Test2_embeddings(t *testing.T) {
 		})
 
 		t.Run("ragged-answer", func(tt *testing.T) {
-			answer, err := raggedAnswer(chatModel)
+			answer, embeddingsCtr, err := raggedAnswer(chatModel)
+			testcontainers.CleanupContainer(tt, embeddingsCtr)
 			if err != nil {
 				tt.Fatalf("ragged answer: %s", err)
 			}
@@ -139,7 +146,8 @@ func Test2_embeddings(t *testing.T) {
 		})
 
 		t.Run("ragged-answer", func(tt *testing.T) {
-			answer, err := raggedAnswer(chatModel)
+			answer, embeddingsCtr, err := raggedAnswer(chatModel)
+			testcontainers.CleanupContainer(tt, embeddingsCtr)
 			if err != nil {
 				tt.Fatalf("ragged answer: %s", err)
 			}
@@ -175,7 +183,8 @@ func Test3_evaluatorAgent(t *testing.T) {
 - Answer must indicate that you can enable verbose logging in Testcontainers Desktop by adding the --verbose flag when running the cli
 `
 
-	chatModel, err := buildChatModel()
+	chatModel, chatCtr, err := buildChatModel()
+	testcontainers.CleanupContainer(t, chatCtr)
 	if err != nil {
 		t.Fatalf("build chat model: %s", err)
 	}
@@ -191,8 +200,9 @@ func Test3_evaluatorAgent(t *testing.T) {
 		}
 
 		type r struct {
-			Response string `json:"response"`
-			Reason   string `json:"reason"`
+			Response       string `json:"response"`
+			ProvidedAnswer string `json:"provided_answer"`
+			Reason         string `json:"reason"`
 		}
 
 		var jsonResp r
@@ -219,7 +229,8 @@ func Test3_evaluatorAgent(t *testing.T) {
 		})
 
 		t.Run("ragged-answer", func(tt *testing.T) {
-			answer, err := raggedAnswer(chatModel)
+			answer, embeddingsCtr, err := raggedAnswer(chatModel)
+			testcontainers.CleanupContainer(tt, embeddingsCtr)
 			if err != nil {
 				tt.Fatalf("ragged answer: %s", err)
 			}
@@ -239,7 +250,8 @@ func Test3_evaluatorAgent(t *testing.T) {
 		})
 
 		t.Run("ragged-answer", func(tt *testing.T) {
-			answer, err := raggedAnswer(chatModel)
+			answer, embeddingsCtr, err := raggedAnswer(chatModel)
+			testcontainers.CleanupContainer(tt, embeddingsCtr)
 			if err != nil {
 				tt.Fatalf("ragged answer: %s", err)
 			}

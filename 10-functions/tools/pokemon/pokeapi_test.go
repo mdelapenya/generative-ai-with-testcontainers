@@ -8,11 +8,7 @@ import (
 )
 
 func TestPokeAPI(t *testing.T) {
-	tool := New()
-
-	tool.callbacksHandler = nil // disable logging
-
-	output, err := tool.Call(context.Background(), "pikachu")
+	output, err := FetchAPI(context.Background(), "pikachu")
 	if err != nil {
 		t.Fatalf("error calling tool: %v", err)
 	}

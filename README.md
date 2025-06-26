@@ -12,13 +12,14 @@ This project demonstrates how to use [Testcontainers for Golang](https://github.
 1. [`06-embeddings`](./06-embeddings): Contains an example of generating embeddings from text and calculating similarity between them.
 1. [`07-rag`](./07-rag): Contains an example of applying RAG (Retrieval-Augmented Generation) to generate better responses.
 1. [`08-testing`](./08-testing): Contains an example with the evolution of testing our Generative AI applications, from an old school approach to a more modern one using Evaluator Agents.
-1. [`09-huggingface`](./09-huggingface): Contains an example of using a HuggingFace model with Ollama.
+1. [`09-huggingface`](./09-huggingface): Contains an example of using a HuggingFace model with Docker Model Runner.
 1. [`10-functions`](./10-functions): Contains an example of using functions in a language model.
 
 ## Prerequisites
 
 - Go 1.23 or higher
 - Docker
+- Docker Model Runner (available in Docker Desktop), since v4.41.0
 
 ## Setup
 
@@ -37,34 +38,61 @@ cd 1-hello-world
 go run .
 ```
 
-## Docker Images
+## Local Models
 
-All the Docker images used in these example projects are available on Docker Hub under the https://hub.docker.com/u/mdelapenya repository. They have been built using an automated process in GitHub Actions, and you can find the source code in the following Github repository: https://github.com/mdelapenya/dockerize-ollama-models.
+All the local models used in these example projects are available on Docker Hub under the [GenAI Catalog](https://hub.docker.com/catalogs/gen-ai). These are the models used in the examples:
 
-Each image basically starts from a base Ollama image, and then pulls the required models to run the examples. As a consequence, they are ready to be used in the examples without any additional setup, for you to just pull the given image and run it.
+- `ai/llama3.2:1B-Q4_0`: used for building chats.
+- `ai/llama3.2:3B-Q4_K_M`: used for building chats using functions.
+- `ai/qwen3:0.6B-Q4_0`: used for building chats.
+- `ai/mxbai-embed-large:335M-F16`: used for generating embeddings.
+- `hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF`: used for demonstrating how to use a HuggingFace model with Docker Model Runner.
 
-The images used in the examples are described below, grouped by model type. You can pull them using the `pull-images.sh` script.
+You can pull them all using the `pull-models.sh` script.
 
-#### Multilingual large language models
+### Multilingual large language models
 
-The Llama 3.2 collection of multilingual large language models (LLMs) is a collection of pretrained and instruction-tuned generative models in 1B and 3B sizes (text in/text out). The Llama 3.2 instruction-tuned text only models are optimized for multilingual dialogue use cases, including agentic retrieval and summarization tasks. They outperform many of the available open source and closed chat models on common industry benchmarks.
+Llama 3.2 introduced lightweight 1B and 3B models at bfloat16 (BF16) precision, later adding quantized versions. The quantized models are significantly faster, with a much lower memory footprint and reduced power consumption, while maintaining nearly the same accuracy as their BF16 counterparts.
 
-- `mdelapenya/llama3.2:0.5.4-1b`
-- `mdelapenya/llama3.2:0.5.4-3b`
+- `ai/llama3.2:1B-Q4_0`
+- `ai/llama3.2:3B-Q4_K_M`
 
-#### Decoder language models
+More information about this model can be found in [Docker Hub](https://hub.docker.com/r/ai/llama3.2).
 
-Qwen2 is a language model series including decoder language models of different model sizes. For each size, we release the base language model and the aligned chat model. It is based on the Transformer architecture with SwiGLU activation, attention QKV bias, group query attention, etc. Additionally, we have an improved tokenizer adaptive to multiple natural languages and codes.
+### Decoder language models
 
-- `mdelapenya/qwen2:0.5.4-0.5b`
+Qwen3 is the latest generation in the Qwen LLM family, designed for top-tier performance in coding, math, reasoning, and language tasks. It includes both dense and Mixture-of-Experts (MoE) models, offering flexible deployment from lightweight apps to large-scale research. Qwen3 introduces dual reasoning modes—"thinking" for complex tasks and "non-thinking" for fast responses—giving users dynamic control over performance. It outperforms prior models in reasoning, instruction following, and code generation, while excelling in creative writing and dialogue. With strong agentic and tool-use capabilities and support for over 100 languages, Qwen3 is optimized for multilingual, multi-domain applications.
 
-#### Vision models
+- `ai/qwen3:0.6B-Q4_0`
 
-Moondream is a small vision language model designed to run efficiently on edge devices. 
-- `mdelapenya/moondream:0.5.4-1.8b`
+More information about this model can be found in [Docker Hub](https://hub.docker.com/r/ai/qwen3).
 
 #### Sentence transformers models
 
-This model maps sentences & paragraphs to a 384 dimensional dense vector space and can be used for tasks like clustering or semantic search.
+mxbai-embed-large-v1 is a state-of-the-art English language embedding model developed by Mixedbread AI. It converts text into dense vector representations, capturing the semantic essence of the input. Trained on a vast dataset exceeding 700 million pairs using contrastive training methods and fine-tuned on over 30 million high-quality triplets with the AnglE loss function, this model adapts to a wide range of topics and domains, making it suitable for various real-world applications and Retrieval-Augmented Generation (RAG) use cases.
 
-- `mdelapenya/all-minilm:0.5.4-22m`
+- `ai/mxbai-embed-large:335M-F16`
+
+More information about this model can be found in [Docker Hub](https://hub.docker.com/r/ai/mxbai-embed-large).
+
+## Docker Images
+
+The project uses some Docker images to support the examples. You can pull them all using the `pull-images.sh` script.
+
+### Supporting Docker Images
+
+The following Docker images are used to support the examples:
+
+- `testcontainers/ryuk:0.11.0`: used to manage the lifecycle of the containers.
+- `semitechnologies/weaviate:1.27.2`: used to store the embeddings when doing RAG.
+- `pgvector/pgvector:pg16`: used to store the embeddings when doing RAG.
+
+### Vision model
+
+The Docker image used in the vision model example project is available on Docker Hub under the https://hub.docker.com/u/mdelapenya repository. It has been built using an automated process in GitHub Actions, and you can find the source code in the following Github repository: https://github.com/mdelapenya/dockerize-ollama-models.
+
+The image basically starts from a base Ollama image, and then pulls the required model (moondream) to run the examples. As a consequence, it is ready to be used in the examples without any additional setup, for you to just pull the given image and run it.
+
+Moondream is a small vision language model designed to run efficiently on edge devices. 
+
+- `mdelapenya/moondream:0.5.4-1.8b`

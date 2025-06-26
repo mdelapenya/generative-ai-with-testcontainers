@@ -6,9 +6,16 @@ import (
 	"log"
 
 	"github.com/testcontainers/testcontainers-go"
-	tcollama "github.com/testcontainers/testcontainers-go/modules/ollama"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+const (
+	modelNamespace = "ai"
+	modelName      = "qwen3"
+	modelTag       = "0.6B-Q4_0"
+	fqModelName    = modelNamespace + "/" + modelName + ":" + modelTag
 )
 
 func main() {
@@ -18,32 +25,27 @@ func main() {
 }
 
 func run() (err error) {
-	c, err := tcollama.Run(context.Background(), "mdelapenya/qwen2:0.5.4-0.5b", testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Name: "chat-model",
-		},
-		Reuse: true,
-	}))
+	dmrCtr, err := dmr.Run(context.Background(), dmr.WithModel(fqModelName), testcontainers.WithReuseByName("streaming-model"))
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err = testcontainers.TerminateContainer(c)
+		err = testcontainers.TerminateContainer(dmrCtr)
 		if err != nil {
 			err = fmt.Errorf("terminate container: %w", err)
 		}
 	}()
 
-	ollamaURL, err := c.ConnectionString(context.Background())
-	if err != nil {
-		return fmt.Errorf("connection string: %w", err)
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithModel(fqModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
 	}
 
-	llm, err := ollama.New(ollama.WithModel("qwen2:0.5b"), ollama.WithServerURL(ollamaURL))
+	llm, err := openai.New(opts...)
 	if err != nil {
-		return fmt.Errorf("ollama new: %w", err)
+		return fmt.Errorf("openai new: %w", err)
 	}
-
 	ctx := context.Background()
 	content := []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeSystem, "Give me a detailed and long explanation of why Testcontainers for Go is great"),

@@ -17,8 +17,7 @@ const (
 	// 	"reason": "The answer is correct because it is based on the reference provided."
 	// }
 	systemPrompt string = `
-### Instructions
-You are a strict validator.
+You are a strict validator that responds ONLY with valid JSON.
 You will be provided with a question, an answer, and a reference.
 Your task is to validate whether the answer is correct for the given question, based on the reference.
 
@@ -30,18 +29,21 @@ Follow these instructions:
 - Respond with 'no' if the answer is not clear or concise
 - Respond with 'no' if the answer is not based on the reference
 
-Your response must be a json object with the following structure:
-{
-	"response": "yes",
-	"reason": "The answer is correct because it is based on the reference provided."
-}
+CRITICAL: Return exactly ONE valid JSON object with no additional text or objects.
 
-### Example
+Your response must be a single valid json object with the following fields:
+- "provided_answer": copy the exact text of the answer that was provided to you
+- "response": "yes" or "no" or "unsure",
+- "reason": the motivation for your response.
+
+Example User input:
 Question: Is Madrid the capital of Spain?
 Answer: No, it's Barcelona.
 Reference: The capital of Spain is Madrid
-###
-Response: {
+
+Here you can find an example of a valid JSON response to build your answer:
+{
+	"provided_answer": "No, it's Barcelona.",
 	"response": "no",
 	"reason": "The answer is incorrect because the reference states that the capital of Spain is Madrid."
 }
@@ -49,13 +51,11 @@ Response: {
 
 	// userPrompt is the prompt for the user message.
 	userPrompt string = `
-###
 Question: %s
-###
 Answer: %s
-###
 Reference: %s
-###
+
+JSON response:
 `
 )
 

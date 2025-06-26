@@ -7,17 +7,23 @@ import (
 	"log"
 
 	"github.com/mdelapenya/genai-testcontainers-go/testing/ai"
+	"github.com/testcontainers/testcontainers-go"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/openai"
 	"github.com/tmc/langchaingo/vectorstores"
 )
 
 const (
-	question  string = "How I can enable verbose logging in Testcontainers Desktop?"
-	model     string = "llama3.2"
-	tag       string = "3b"
-	modelName string = model + ":" + tag
+	question              string = "How I can enable verbose logging in Testcontainers Desktop?"
+	modelNamespace               = "ai"
+	embeddingsModelName          = "mxbai-embed-large"
+	embeddingsModelTag           = "335M-F16"
+	fqEmbeddingsModelName        = modelNamespace + "/" + embeddingsModelName + ":" + embeddingsModelTag
+	modelName                    = "llama3.2"
+	modelTag                     = "1B-Q4_0"
+	fqModelName                  = modelNamespace + "/" + modelName + ":" + modelTag
 )
 
 //go:embed knowledge
@@ -31,10 +37,16 @@ func main() {
 }
 
 func run() error {
-	chatModel, err := buildChatModel()
+	chatModel, chatCtr, err := buildChatModel()
 	if err != nil {
 		return fmt.Errorf("build chat model: %s", err)
 	}
+	defer func() {
+		err = testcontainers.TerminateContainer(chatCtr)
+		if err != nil {
+			err = fmt.Errorf("terminate container: %w", err)
+		}
+	}()
 
 	resp, err := straightAnswer(chatModel)
 	if err != nil {
@@ -42,48 +54,59 @@ func run() error {
 	}
 	fmt.Println(">> Straight answer:\n", resp)
 
-	resp, err = raggedAnswer(chatModel)
+	resp, embeddingsCtr, err := raggedAnswer(chatModel)
 	if err != nil {
 		return fmt.Errorf("ragged chat: %s", err)
 	}
+	defer func() {
+		err = testcontainers.TerminateContainer(embeddingsCtr)
+		if err != nil {
+			err = fmt.Errorf("terminate container: %w", err)
+		}
+	}()
 	fmt.Println(">> Ragged answer:\n", resp)
 
 	return nil
 }
 
-func straightAnswer(chatModel *ollama.LLM) (string, error) {
+func straightAnswer(chatModel *openai.LLM) (string, error) {
 	chatter := ai.NewChat(chatModel)
 
 	return chatter.Chat(question)
 }
 
-func raggedAnswer(chatModel *ollama.LLM) (string, error) {
-	chatter, err := buildRaggedChat(chatModel)
+func raggedAnswer(chatModel *openai.LLM) (string, *dmr.Container, error) {
+	chatter, embeddingsCtr, err := buildRaggedChat(chatModel)
 	if err != nil {
-		return "", fmt.Errorf("build ragged chat: %s", err)
+		return "", embeddingsCtr, fmt.Errorf("build ragged chat: %s", err)
 	}
 
-	return chatter.Chat(question)
+	s, err := chatter.Chat(question)
+	if err != nil {
+		return "", embeddingsCtr, fmt.Errorf("chat: %s", err)
+	}
+
+	return s, embeddingsCtr, nil
 }
 
-func buildRaggedChat(chatModel llms.Model) (ai.Chatter, error) {
-	embeddingModel, err := buildEmbeddingModel()
+func buildRaggedChat(chatModel llms.Model) (ai.Chatter, *dmr.Container, error) {
+	embeddingModel, embeddingsCtr, err := buildEmbeddingModel()
 	if err != nil {
-		return nil, fmt.Errorf("build embedding model: %w", err)
+		return nil, embeddingsCtr, fmt.Errorf("build embedding model: %w", err)
 	}
 
 	embedder, err := embeddings.NewEmbedder(embeddingModel)
 	if err != nil {
-		return nil, fmt.Errorf("new embedder: %w", err)
+		return nil, embeddingsCtr, fmt.Errorf("new embedder: %w", err)
 	}
 
 	store, err := selectStore(context.Background(), embedder)
 	if err != nil {
-		return nil, fmt.Errorf("new store: %w", err)
+		return nil, embeddingsCtr, fmt.Errorf("new store: %w", err)
 	}
 
 	if err := ingestion(store); err != nil {
-		return nil, fmt.Errorf("ingestion: %w", err)
+		return nil, embeddingsCtr, fmt.Errorf("ingestion: %w", err)
 	}
 
 	// Enrich the response with the relevant documents after the ingestion
@@ -99,9 +122,9 @@ func buildRaggedChat(chatModel llms.Model) (ai.Chatter, error) {
 
 	relevantDocs, err := store.SimilaritySearch(context.Background(), "cloud.logs.verbose", maxResults, optionsVector...)
 	if err != nil {
-		return nil, fmt.Errorf("similarity search: %w", err)
+		return nil, embeddingsCtr, fmt.Errorf("similarity search: %w", err)
 	}
 	log.Printf("Relevant documents for RAG: %d\n", len(relevantDocs))
 
-	return ai.NewChat(chatModel, ai.WithRAGContext(relevantDocs)), nil
+	return ai.NewChat(chatModel, ai.WithRAGContext(relevantDocs)), embeddingsCtr, nil
 }

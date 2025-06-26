@@ -4,11 +4,20 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/testcontainers/testcontainers-go"
-	tcollama "github.com/testcontainers/testcontainers-go/modules/ollama"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+const (
+	modelRegistry  = "hf.co" // Hugginface model registry
+	modelNamespace = "bartowski"
+	modelName      = "Llama-3.2-1B-Instruct-GGUF"
+	modelTag       = "Q4_K_M"
+	fqModelName    = modelRegistry + "/" + modelNamespace + "/" + modelName + ":" + modelTag
 )
 
 func main() {
@@ -18,68 +27,29 @@ func main() {
 }
 
 func run() (err error) {
-	var c *tcollama.OllamaContainer
+	// Huggingface needs a lower case model name
+	sanitisedFqModelName := strings.ToLower(fqModelName)
 
-	const (
-		modelName string = "DavidAU/DistiLabelOrca-TinyLLama-1.1B-Q8_0-GGUF"
-		modelFile string = "distilabelorca-tinyllama-1.1b.Q8_0.gguf"
-
-		// the name of the image that we will commit to the registry.
-		// It's using a significant and valid image name in order to be
-		// identified by this project.
-		imageName string = "distilabelorca-tinyllama-guff"
-	)
-
-	opts := []testcontainers.ContainerCustomizer{
-		testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-			ContainerRequest: testcontainers.ContainerRequest{
-				Name:          "huggingface-model",
-				ImagePlatform: "linux/amd64",
-			},
-			Reuse: true,
-		}),
-	}
-
-	// first try to run the image with the huggingface tooling and model already installed
-	c, err = tcollama.Run(context.Background(), imageName, opts...)
+	dmrCtr, err := dmr.Run(context.Background(), dmr.WithModel(sanitisedFqModelName), testcontainers.WithReuseByName("hugginface-model"))
 	if err != nil {
-		// the image does not exist: build it including the huggingface tooling and model
-		c, err = tcollama.Run(context.Background(),
-			"ollama/ollama:0.5.4",
-			append(opts, WithHuggingfaceModel(modelName, modelFile))...,
-		)
-		if err != nil {
-			return err
-		}
-
-		// commit the image to the registry so that we can be reuse it in subsequent runs
-		// without having to build it again.
-		err = c.Commit(context.Background(), imageName)
-		if err != nil {
-			return err
-		}
+		return err
 	}
 	defer func() {
-		terminateErr := testcontainers.TerminateContainer(c)
-		if terminateErr != nil {
-			err = fmt.Errorf("terminate container: %w", terminateErr)
+		err = testcontainers.TerminateContainer(dmrCtr)
+		if err != nil {
+			err = fmt.Errorf("terminate container: %w", err)
 		}
 	}()
 
-	ollamaURL, connErr := c.ConnectionString(context.Background())
-	if connErr != nil {
-		err = fmt.Errorf("connection string: %w", connErr)
-		return
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithModel(sanitisedFqModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
 	}
 
-	llm, ollamaErr := ollama.New(
-		// IMPORTANT: the Ollama model is the model file.
-		ollama.WithModel(modelFile),
-		ollama.WithServerURL(ollamaURL),
-	)
-	if ollamaErr != nil {
-		err = fmt.Errorf("ollama new: %w", ollamaErr)
-		return
+	llm, err := openai.New(opts...)
+	if err != nil {
+		return fmt.Errorf("openai new: %w", err)
 	}
 
 	ctx := context.Background()

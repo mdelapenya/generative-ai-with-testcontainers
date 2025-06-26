@@ -5,54 +5,47 @@ import (
 	"fmt"
 
 	"github.com/testcontainers/testcontainers-go"
-	tcollama "github.com/testcontainers/testcontainers-go/modules/ollama"
-	"github.com/tmc/langchaingo/llms/ollama"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
-func buildChatModel() (*ollama.LLM, error) {
-	c, err := tcollama.Run(context.Background(), "mdelapenya/"+model+":0.5.4-"+tag, testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Name: "chat-model",
-		},
-		Reuse: true,
-	}))
+func buildChatModel() (llm *openai.LLM, dmrCtr *dmr.Container, err error) {
+	dmrCtr, err = dmr.Run(context.Background(), dmr.WithModel(fqModelName), testcontainers.WithReuseByName("chat-model"))
 	if err != nil {
-		return nil, err
+		return nil, dmrCtr, err
 	}
 
-	ollamaURL, err := c.ConnectionString(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("connection string: %w", err)
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithModel(fqModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
+		openai.WithResponseFormat(openai.ResponseFormatJSON),
 	}
 
-	llm, err := ollama.New(ollama.WithModel(modelName), ollama.WithServerURL(ollamaURL))
+	llm, err = openai.New(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("ollama new: %w", err)
+		return nil, dmrCtr, fmt.Errorf("openai new: %w", err)
 	}
 
-	return llm, nil
+	return llm, dmrCtr, nil
 }
 
-func buildEmbeddingModel() (*ollama.LLM, error) {
-	c, err := tcollama.Run(context.Background(), "mdelapenya/all-minilm:0.5.4-22m", testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Name: "embeddings-model",
-		},
-		Reuse: true,
-	}))
+func buildEmbeddingModel() (llm *openai.LLM, dmrCtr *dmr.Container, err error) {
+	dmrCtr, err = dmr.Run(context.Background(), dmr.WithModel(fqEmbeddingsModelName), testcontainers.WithReuseByName("embeddings-model"))
 	if err != nil {
-		return nil, err
+		return nil, dmrCtr, err
 	}
 
-	ollamaURL, err := c.ConnectionString(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("connection string: %w", err)
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithEmbeddingModel(fqEmbeddingsModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
 	}
 
-	llm, err := ollama.New(ollama.WithModel("all-minilm:22m"), ollama.WithServerURL(ollamaURL))
+	llm, err = openai.New(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("ollama new: %w", err)
+		return nil, dmrCtr, fmt.Errorf("openai new: %w", err)
 	}
 
-	return llm, nil
+	return llm, dmrCtr, nil
 }

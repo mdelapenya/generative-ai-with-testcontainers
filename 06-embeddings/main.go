@@ -7,9 +7,16 @@ import (
 
 	"github.com/chewxy/math32"
 	"github.com/testcontainers/testcontainers-go"
-	tcollama "github.com/testcontainers/testcontainers-go/modules/ollama"
+	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	"github.com/tmc/langchaingo/embeddings"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+const (
+	modelNamespace = "ai"
+	modelName      = "mxbai-embed-large"
+	modelTag       = "335M-F16"
+	fqModelName    = modelNamespace + "/" + modelName + ":" + modelTag
 )
 
 func main() {
@@ -19,30 +26,26 @@ func main() {
 }
 
 func run() (err error) {
-	c, err := tcollama.Run(context.Background(), "mdelapenya/all-minilm:0.5.4-22m", testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Name: "embeddings-model",
-		},
-		Reuse: true,
-	}))
+	dmrCtr, err := dmr.Run(context.Background(), dmr.WithModel(fqModelName), testcontainers.WithReuseByName("embeddings-model"))
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err = testcontainers.TerminateContainer(c)
+		err = testcontainers.TerminateContainer(dmrCtr)
 		if err != nil {
 			err = fmt.Errorf("terminate container: %w", err)
 		}
 	}()
 
-	ollamaURL, err := c.ConnectionString(context.Background())
-	if err != nil {
-		return fmt.Errorf("connection string: %w", err)
+	opts := []openai.Option{
+		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
+		openai.WithEmbeddingModel(fqModelName),
+		openai.WithToken("foo"), // No API key needed for Model Runner
 	}
 
-	llm, err := ollama.New(ollama.WithModel("all-minilm:22m"), ollama.WithServerURL(ollamaURL))
+	llm, err := openai.New(opts...)
 	if err != nil {
-		return fmt.Errorf("ollama new: %w", err)
+		return fmt.Errorf("openai new: %w", err)
 	}
 
 	embedder, err := embeddings.NewEmbedder(llm)
@@ -59,7 +62,7 @@ func run() (err error) {
 
 	vecs, err := embedder.EmbedDocuments(context.Background(), docs)
 	if err != nil {
-		log.Fatal("embed query", err)
+		return fmt.Errorf("embed query: %w", err)
 	}
 
 	fmt.Println("Similarities:")
