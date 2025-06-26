@@ -44,7 +44,7 @@ func run() (err error) {
 
 	llm, err := openai.New(opts...)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("openai new: %w", err)
 	}
 	ctx := context.Background()
 	content := []llms.MessageContent{
