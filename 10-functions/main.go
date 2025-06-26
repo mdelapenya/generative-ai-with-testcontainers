@@ -66,12 +66,6 @@ func run() (err error) {
 			err = fmt.Errorf("terminate container: %w", err)
 		}
 	}()
-	defer func() {
-		terminateErr := testcontainers.TerminateContainer(dmrCtr)
-		if terminateErr != nil {
-			err = fmt.Errorf("terminate container: %w", terminateErr)
-		}
-	}()
 
 	opts := []openai.Option{
 		openai.WithBaseURL(dmrCtr.OpenAIEndpoint()),
