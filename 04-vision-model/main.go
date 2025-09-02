@@ -54,16 +54,12 @@ func run() error {
 	})
 
 	ctx := context.Background()
-	resp, err := llm.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+	_, err = llm.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
 		fmt.Print(string(chunk))
 		return nil
 	}))
 	if err != nil {
 		return fmt.Errorf("llm generate content: %w", err)
-	}
-
-	for _, choice := range resp.Choices {
-		fmt.Println(choice.Content)
 	}
 
 	return nil
