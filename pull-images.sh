@@ -1,6 +1,6 @@
 #!/bin/bash
 
-readonly OLLAMA_VERSION="0.5.4"
+readonly OLLAMA_VERSION="0.11.8"
 
 docker pull ollama/ollama:${OLLAMA_VERSION}
 

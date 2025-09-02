@@ -95,4 +95,4 @@ The image basically starts from a base Ollama image, and then pulls the required
 
 Moondream is a small vision language model designed to run efficiently on edge devices. 
 
-- `mdelapenya/moondream:0.5.4-1.8b`
+- `mdelapenya/moondream:0.11.8-1.8b`

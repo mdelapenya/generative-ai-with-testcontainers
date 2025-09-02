@@ -21,8 +21,8 @@ func main() {
 	}
 }
 
-func run() (err error) {
-	c, err := tcollama.Run(context.Background(), "mdelapenya/moondream:0.5.4-1.8b", testcontainers.WithReuseByName("vision-model"))
+func run() error {
+	c, err := tcollama.Run(context.Background(), "mdelapenya/moondream:0.11.8-1.8b", testcontainers.WithReuseByName("vision-model"))
 	if err != nil {
 		return err
 	}
@@ -54,12 +54,16 @@ func run() (err error) {
 	})
 
 	ctx := context.Background()
-	_, err = llm.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+	resp, err := llm.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
 		fmt.Print(string(chunk))
 		return nil
 	}))
 	if err != nil {
 		return fmt.Errorf("llm generate content: %w", err)
+	}
+
+	for _, choice := range resp.Choices {
+		fmt.Println(choice.Content)
 	}
 
 	return nil

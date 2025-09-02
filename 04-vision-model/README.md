@@ -17,7 +17,7 @@ The code in `main.go` sets up and runs a containerized Ollama language model usi
 
 - `main()`: The entry point of the application. It calls the `run()` function and logs any errors.
 - `run()`: The main logic of the application. It performs the following steps:
-  1. Runs an Ollama container using Testcontainers. The image used is `mdelapenya/moondream:0.5.4-1.8b`, loading the `moondream:1.8b` model.
+  1. Runs an Ollama container using Testcontainers. The image used is `mdelapenya/moondream:0.11.8-1.8b`, loading the `moondream:1.8b` model.
   2. Retrieves the connection string for the running container.
   3. Creates a new Ollama language model instance.
   4. Defines a user prompt based on an image.
