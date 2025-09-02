@@ -56,7 +56,7 @@ func run() (err error) {
 	docs := []string{
 		"A cat is a small domesticated carnivorous mammal",
 		"A tiger is a large carnivorous feline mammal",
-		"Testcontainers is a Go package that supports JUnit tests, providing lightweight, throwaway instances of common databases, web browsers, or anything else that can run in a Docker container",
+		"Testcontainers is a Go package that supports Go tests, providing lightweight, throwaway instances of common databases, web browsers, or anything else that can run in a Docker container",
 		"Docker is a platform designed to help developers build, share, and run container applications. We handle the tedious setup, so you can focus on the code.",
 	}
 
@@ -66,10 +66,12 @@ func run() (err error) {
 	}
 
 	fmt.Println("Similarities:")
+	fmt.Println("--------------------------------")
 	for i := range docs {
 		for j := range docs {
-			fmt.Printf("%6s ~ %6s = %0.2f\n", docs[i], docs[j], cosineSimilarity(vecs[i], vecs[j]))
+			fmt.Printf("- %6s ~ %6s = %0.2f\n", docs[i], docs[j], cosineSimilarity(vecs[i], vecs[j]))
 		}
+		fmt.Println("--------------------------------")
 	}
 
 	return nil
