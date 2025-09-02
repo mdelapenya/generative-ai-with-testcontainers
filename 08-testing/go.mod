@@ -1,6 +1,6 @@
 module github.com/mdelapenya/genai-testcontainers-go/testing
 
-go 1.23.6
+go 1.25
 
 require (
 	github.com/chewxy/math32 v1.11.1

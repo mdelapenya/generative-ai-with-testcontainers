@@ -1,6 +1,6 @@
 module github.com/mdelapenya/genai-testcontainers-go/functions
 
-go 1.23.6
+go 1.25
 
 require (
 	github.com/stretchr/testify v1.10.0

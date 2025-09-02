@@ -1,6 +1,6 @@
 module github.com/mdelapenya/genai-testcontainers-go/rag
 
-go 1.23.6
+go 1.25
 
 require (
 	github.com/testcontainers/testcontainers-go v0.38.0
