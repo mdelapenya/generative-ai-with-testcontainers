@@ -11,4 +11,5 @@ use (
 	./08-testing
 	./09-huggingface
 	./10-functions
+	./11-benchmarks
 )
