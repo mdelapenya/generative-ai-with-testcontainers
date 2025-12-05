@@ -151,8 +151,8 @@ func (s *AppleGPUSampler) getGPUUtilization() float64 {
 	// This requires sudo but provides accurate GPU utilization metrics
 	// powermetrics -n 1 -i 1000 --samplers gpu_power
 	cmd := exec.Command("powermetrics",
-		"-n", "1",           // 1 sample
-		"-i", "100",         // 100ms sample interval (faster response)
+		"-n", "1", // 1 sample
+		"-i", "100", // 100ms sample interval (faster response)
 		"--samplers", "gpu_power", // Only sample GPU power metrics
 	)
 
