@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"sort"
@@ -11,6 +12,9 @@ import (
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/llmclient"
 	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 )
+
+//go:embed testdata/fibonacci.go
+var fibonacciCode string
 
 // getDMRContainer returns the typed DMR container
 func getDMRContainer() *dmr.Container {
@@ -43,27 +47,27 @@ var (
 		{
 			Name:         "code-explanation",
 			SystemPrompt: "You are a helpful coding assistant.",
-			UserPrompt:   "Explain what this Go code does: func main() { fmt.Println(\"Hello\") }",
+			UserPrompt:   "Explain what this Go code does:\n\n```go\n" + fibonacciCode + "\n```",
 		},
 		{
-			Name:         "simple-math",
-			SystemPrompt: "You are a mathematics tutor.",
-			UserPrompt:   "What is 15 multiplied by 23?",
+			Name:         "mathematical-operations",
+			SystemPrompt: "You are a mathematics expert.",
+			UserPrompt:   "What is the result of sum of all numbers between 1 and 100, both inclusive?",
 		},
 		{
 			Name:         "creative-writing",
-			SystemPrompt: "You are a creative writer.",
-			UserPrompt:   "Write a one-sentence story about a robot learning to paint.",
+			SystemPrompt: "You are a creative writer with a great sense of humor.",
+			UserPrompt:   "Write an hilarious joke about the Fibonacci sequence.",
 		},
 		{
 			Name:         "factual-question",
-			SystemPrompt: "You are a knowledgeable assistant.",
-			UserPrompt:   "What is the capital of France?",
+			SystemPrompt: "You are a knowledgeable history expert.",
+			UserPrompt:   "What was the significance of Toledo, Spain during the medieval period, particularly regarding the translation movement?",
 		},
 		{
 			Name:         "code-generation",
 			SystemPrompt: "You are a Go programming expert.",
-			UserPrompt:   "Write a Go function that reverses a string.",
+			UserPrompt:   "Write a Go function that calculates the Fibonacci sequence using recursion.",
 		},
 	}
 

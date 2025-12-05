@@ -19,7 +19,7 @@ The goal is to find *the smallest model that won't completely fail you*.
 
 This benchmark implements a **full factorial design** to systematically explore:
 - **Models**: 4 local models + optional OpenAI GPT-5.1 (if `OPENAI_API_KEY` is set)
-- **Test Cases**: 5 prompts (code-explanation, simple-math, creative-writing, factual-question, code-generation)
+- **Test Cases**: 5 prompts (code-explanation, mathematical-operations, creative-writing, factual-question, code-generation)
 - **Temperatures**: 5 values (0.1, 0.3, 0.5, 0.7, 0.9)
 
 **Total**: 100 scenarios (125 with OpenAI) to answer questions like:
@@ -120,7 +120,7 @@ BenchmarkLLMs/llama3.2/code-explanation/temp0.3-8              5         ... lat
 BenchmarkLLMs/llama3.2/code-explanation/temp0.5-8              5         ... latency_p50_ms:260.00 prompt_eval_p50_ms:47.00 ...
 BenchmarkLLMs/llama3.2/code-explanation/temp0.7-8              5         ... latency_p50_ms:270.00 prompt_eval_p50_ms:48.00 ...
 BenchmarkLLMs/llama3.2/code-explanation/temp0.9-8              5         ... latency_p50_ms:290.00 prompt_eval_p50_ms:50.00 ...
-BenchmarkLLMs/llama3.2/simple-math/temp0.1-8                   5         ... latency_p50_ms:150.00 prompt_eval_p50_ms:30.00 ...
+BenchmarkLLMs/llama3.2/mathematical-operations/temp0.1-8       5         ... latency_p50_ms:150.00 prompt_eval_p50_ms:30.00 ...
 ...
 ```
 
@@ -205,7 +205,7 @@ The dashboard **"LLM Bench (DMR + Testcontainers)"** includes 10 panels with tem
 
 Filter results by:
 - **model**: Specific models (e.g., `ai/llama3.2:1B-Q4_0`) - use "All" for overview or multi-select for comparison
-- **case**: Test case type (e.g., `code-explanation`, `simple-math`) - focus on your use cases
+- **case**: Test case type (e.g., `code-explanation`, `mathematical-operations`) - focus on your use cases
 - **temp**: Temperature (0.1-0.9) - lower = deterministic, higher = creative
 
 **Tips**:
