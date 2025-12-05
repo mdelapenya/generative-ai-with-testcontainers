@@ -176,6 +176,7 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 	promTokensPerOp := semconv.ToPrometheusMetricName(semconv.MetricLLMTokensPerOp)
 	promSuccessRate := semconv.ToPrometheusMetricName(semconv.MetricLLMSuccessRate)
 	promTokensPerSecond := semconv.ToPrometheusMetricName(semconv.MetricLLMTokensPerSecond)
+	promNsPerOp := semconv.ToPrometheusMetricName(semconv.MetricLLMNsPerOp)
 	promGPUUtilization := semconv.ToPrometheusMetricName(semconv.MetricGPUUtilization)
 	promGPUMemory := semconv.ToPrometheusMetricName(semconv.MetricGPUMemory)
 	promScore := semconv.ToPrometheusMetricName(semconv.MetricLLMScore)
@@ -271,12 +272,15 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				createSimpleTimeseriesPanel(8, "Success Rate", promSuccessRate, 8, 24, 8, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}),
 				createSimpleTimeseriesPanel(9, "Tokens per Second", promTokensPerSecond, 16, 24, 8, 8, "short", nil),
 
+				// ns/op metric (Go benchmark)
+				createSimpleTimeseriesPanel(10, "ns/op (Go Benchmark)", promNsPerOp, 0, 32, 24, 8, "ns", nil),
+
 				// GPU metrics
-				createNoLabelTimeseriesPanel(10, "GPU Utilization", "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}),
-				createNoLabelTimeseriesPanel(11, "GPU Memory Usage", "GPU Memory", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil),
+				createNoLabelTimeseriesPanel(11, "GPU Utilization", "GPU Utilization", promGPUUtilization, 0, 40, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}),
+				createNoLabelTimeseriesPanel(12, "GPU Memory Usage", "GPU Memory", promGPUMemory, 12, 40, 12, 8, "decmbytes", nil),
 
 				// Score metric
-				createSimpleTimeseriesPanel(12, "Score per Operation", promScore, 0, 40, 24, 8, "short", map[string]interface{}{"min": 0, "max": 1}),
+				createSimpleTimeseriesPanel(13, "Score per Operation", promScore, 0, 48, 24, 8, "short", map[string]interface{}{"min": 0, "max": 1}),
 			},
 		},
 		"overwrite": true,

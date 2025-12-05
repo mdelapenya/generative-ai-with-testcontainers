@@ -212,8 +212,11 @@ func BenchmarkLLMs(b *testing.B) {
 					// Calculate and report aggregate metrics
 					reportAggregateMetrics(b, results)
 
+					// Calculate ns/op from Go benchmark framework
+					nsPerOp := float64(b.Elapsed().Nanoseconds()) / float64(b.N)
+
 					// Update OpenTelemetry gauges with model/case/temp labels
-					updateGauges(modelName, tc.Name, temp, results)
+					updateGauges(modelName, tc.Name, temp, results, nsPerOp)
 				})
 			}
 		}
@@ -390,7 +393,7 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 }
 
 // updateGauges updates OpenTelemetry gauge metrics with model/case/temp labels
-func updateGauges(model, testCase string, temp float64, results []BenchmarkResult) {
+func updateGauges(model, testCase string, temp float64, results []BenchmarkResult, nsPerOp float64) {
 	if len(results) == 0 {
 		return
 	}
@@ -433,7 +436,7 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	if len(latencies) == 0 {
 		// No successful results - still update with correct success rate (which will be 0)
 		successRate := float64(successCount) / float64(len(results))
-		metricsCollector.UpdateAggregates(model, testCase, temp, 0, 0, 0, 0, 0, 0, successRate, 0, 0, 0, 0)
+		metricsCollector.UpdateAggregates(model, testCase, temp, 0, 0, 0, 0, 0, 0, successRate, 0, 0, 0, 0, 0)
 		return
 	}
 
@@ -479,7 +482,8 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 		outputTokensPerSec = avgOutputTokens / avgGenerationTimeSec
 	}
 
-	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgScore, tokensPerSec, outputTokensPerSec)
+	// nsPerOp is passed in from the Go benchmark framework (b.Elapsed() / b.N)
+	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgScore, tokensPerSec, outputTokensPerSec, nsPerOp)
 }
 
 // percentile calculates the nth percentile of a sorted slice

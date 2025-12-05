@@ -28,6 +28,7 @@ type AggregateMetrics struct {
 	Score              float64
 	TokensPerSec       float64 // Total TPS: (input + output) / TAT
 	OutputTokensPerSec float64 // Output TPS: output tokens / generation time
+	NsPerOp            float64 // Nanoseconds per operation (Go benchmark metric)
 }
 
 // MetricsCollector collects and records LLM benchmark metrics
@@ -294,6 +295,24 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 	}
 
 	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMNsPerOp,
+		metric.WithDescription(semconv.DescLLMNsPerOp),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.NsPerOp, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create ns per op gauge: %w", err)
+	}
+
+	if _, err := meter.Float64ObservableGauge(
 		semconv.MetricGPUUtilization,
 		metric.WithDescription(semconv.DescGPUUtilization),
 		metric.WithUnit(semconv.UnitPercent),
@@ -382,7 +401,7 @@ func (mc *MetricsCollector) RecordPromptEvalTime(ctx context.Context, promptEval
 }
 
 // UpdateAggregates updates the aggregate metrics (percentiles, success rate, etc.) for a specific model/case/temp combination
-func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, score, tokensPerSec, outputTokensPerSec float64) {
+func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, score, tokensPerSec, outputTokensPerSec, nsPerOp float64) {
 	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
 
 	mc.aggregates[key] = &AggregateMetrics{
@@ -400,6 +419,7 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 		Score:              score,
 		TokensPerSec:       tokensPerSec,
 		OutputTokensPerSec: outputTokensPerSec,
+		NsPerOp:            nsPerOp,
 	}
 }
 

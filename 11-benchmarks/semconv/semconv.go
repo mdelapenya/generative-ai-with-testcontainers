@@ -21,6 +21,7 @@ const (
 	MetricLLMScore                 = "llm.score"
 	MetricLLMTokensPerSecond       = "llm.tokens_per_second"
 	MetricLLMOutputTokensPerSecond = "llm.output_tokens_per_second"
+	MetricLLMNsPerOp               = "llm.ns_per_op"
 	MetricGPUUtilization           = "gpu.utilization"
 	MetricGPUMemory                = "gpu.memory"
 
@@ -62,6 +63,7 @@ const (
 	DescLLMScore                 = "Average score per operation"
 	DescLLMTokensPerSecond       = "Total tokens per second (input + output / TAT)"
 	DescLLMOutputTokensPerSecond = "Output tokens per second (generation speed only)"
+	DescLLMNsPerOp               = "Nanoseconds per operation (Go benchmark metric)"
 	DescGPUUtilization           = "GPU utilization percentage"
 	DescGPUMemory                = "GPU memory usage in MB"
 )
