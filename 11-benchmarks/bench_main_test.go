@@ -12,6 +12,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	lgtm "github.com/testcontainers/testcontainers-go/modules/grafana-lgtm"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 var (
@@ -19,6 +21,7 @@ var (
 	lgtmContainer    testcontainers.Container
 	otelSetup        *OtelSetup
 	metricsCollector *MetricsCollector
+	evaluatorAgent   llms.Model // LLM model used for evaluation
 )
 
 // TestMain sets up the test environment
@@ -80,6 +83,15 @@ func TestMain(m *testing.M) {
 	}
 	dmrContainer = dmrCtr
 
+	// Initialize evaluator agent
+	evaluatorAgent, err = initializeEvaluatorAgent(ctx)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize evaluator agent: %s", err)
+		log.Printf("Benchmarks will run without evaluation scoring.")
+	} else {
+		fmt.Printf("✅ Evaluator agent initialized\n\n")
+	}
+
 	// Get Grafana endpoint and create dashboard
 	grafanaEndpoint, err := lgtmCtr.HttpEndpoint(ctx)
 	if err != nil {
@@ -129,4 +141,37 @@ func TestMain(m *testing.M) {
 	fmt.Printf("=================================================\n\n")
 
 	os.Exit(exitCode)
+}
+
+// initializeEvaluatorAgent creates and configures the LLM model used for evaluation
+func initializeEvaluatorAgent(ctx context.Context) (llms.Model, error) {
+	// Check if OpenAI API key is available
+	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
+		fmt.Printf("🔑 Using OpenAI for evaluation (gpt-4o-mini)\n")
+		// Use OpenAI's gpt-4o-mini for evaluation (fast and cost-effective)
+		return openai.New(
+			openai.WithModel("gpt-4o-mini"),
+			openai.WithToken(apiKey),
+		)
+	}
+
+	// Fall back to using the DMR container with a local model
+	fmt.Printf("🔑 Using local model for evaluation (ai/llama3.2:3B-Q4_K_M via DMR)\n")
+	dmrEndpoint := getDMRContainer().OpenAIEndpoint()
+
+	// Use a local model from DMR for evaluation
+	// We'll use llama3.2:3B as it's a good balance of speed and quality for evaluation
+	evaluatorModel := "ai/llama3.2:3B-Q4_K_M"
+
+	// Pull the evaluator model
+	if err := getDMRContainer().PullModel(ctx, evaluatorModel); err != nil {
+		return nil, fmt.Errorf("failed to pull evaluator model: %w", err)
+	}
+
+	// Create OpenAI-compatible client pointing to DMR
+	return openai.New(
+		openai.WithModel(evaluatorModel),
+		openai.WithBaseURL(dmrEndpoint),
+		openai.WithToken("dummy"), // DMR doesn't require auth
+	)
 }

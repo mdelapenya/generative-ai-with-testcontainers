@@ -1,0 +1,1 @@
+The code implements a recursive Fibonacci sequence calculator. It has base cases for n <= 1 returning n, and recursively calculates fibonacci(n-1) + fibonacci(n-2) for larger values.

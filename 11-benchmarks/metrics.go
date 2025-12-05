@@ -25,7 +25,8 @@ type AggregateMetrics struct {
 	PromptEvalTimeP95  float64
 	SuccessRate        float64
 	TokensPerOp        float64
-	Score              float64
+	EvalScore          float64 // Average evaluator score (0.0-1.0)
+	EvalPassRate       float64 // Percentage of "yes" responses from evaluator
 	TokensPerSec       float64 // Total TPS: (input + output) / TAT
 	OutputTokensPerSec float64 // Output TPS: output tokens / generation time
 	NsPerOp            float64 // Nanoseconds per operation (Go benchmark metric)
@@ -241,8 +242,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 	}
 
 	if _, err := meter.Float64ObservableGauge(
-		semconv.MetricLLMScore,
-		metric.WithDescription(semconv.DescLLMScore),
+		semconv.MetricLLMEvalScore,
+		metric.WithDescription(semconv.DescLLMEvalScore),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
@@ -250,12 +251,30 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 					attribute.String(semconv.AttrCase, agg.TestCase),
 					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
 				}
-				o.Observe(agg.Score, metric.WithAttributes(attrs...))
+				o.Observe(agg.EvalScore, metric.WithAttributes(attrs...))
 			}
 			return nil
 		}),
 	); err != nil {
-		return nil, fmt.Errorf("failed to create score gauge: %w", err)
+		return nil, fmt.Errorf("failed to create eval score gauge: %w", err)
+	}
+
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMEvalPassRate,
+		metric.WithDescription(semconv.DescLLMEvalPassRate),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.EvalPassRate, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create eval pass rate gauge: %w", err)
 	}
 
 	if _, err := meter.Float64ObservableGauge(
@@ -401,7 +420,7 @@ func (mc *MetricsCollector) RecordPromptEvalTime(ctx context.Context, promptEval
 }
 
 // UpdateAggregates updates the aggregate metrics (percentiles, success rate, etc.) for a specific model/case/temp combination
-func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, score, tokensPerSec, outputTokensPerSec, nsPerOp float64) {
+func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp float64) {
 	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
 
 	mc.aggregates[key] = &AggregateMetrics{
@@ -416,7 +435,8 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 		PromptEvalTimeP95:  promptEvalP95,
 		SuccessRate:        successRate,
 		TokensPerOp:        tokensPerOp,
-		Score:              score,
+		EvalScore:          evalScore,
+		EvalPassRate:       evalPassRate,
 		TokensPerSec:       tokensPerSec,
 		OutputTokensPerSec: outputTokensPerSec,
 		NsPerOp:            nsPerOp,

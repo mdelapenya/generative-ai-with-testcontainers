@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/evaluator"
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/llmclient"
 	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 )
@@ -139,7 +140,10 @@ type BenchmarkResult struct {
 	CompletionTokens int           // Output tokens generated
 	TotalTokens      int           // Total tokens (prompt + completion)
 	Success          bool
-	Score            float64
+	EvalScore        float64 // Score from evaluator agent (0.0-1.0)
+	EvalResponse     string  // "yes", "no", or "unsure"
+	EvalReason       string  // Reasoning from evaluator
+	ResponseContent  string  // The actual LLM response content
 }
 
 // BenchmarkLLMs runs benchmarks for all models and test cases
@@ -245,7 +249,19 @@ func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model str
 		result.PromptTokens = resp.PromptTokens
 		result.CompletionTokens = resp.CompletionTokens
 		result.TotalTokens = resp.TotalTokens
-		result.Score = calculateScore(resp)
+		result.ResponseContent = resp.Content
+
+		// Evaluate the response using the evaluator agent
+		if evaluatorAgent != nil {
+			evalResult, evalErr := evaluateResponse(ctx, tc.Name, tc.UserPrompt, resp.Content)
+			if evalErr == nil {
+				result.EvalScore = evalResult.Score
+				result.EvalResponse = evalResult.Response
+				result.EvalReason = evalResult.Reason
+			} else {
+				fmt.Printf("⚠️  Evaluation error for %s/%s/temp%.1f: %v\n", model, tc.Name, temp, evalErr)
+			}
+		}
 	} else {
 		// Log error for debugging (will appear in benchmark output)
 		fmt.Printf("❌ Error in %s/%s/temp%.1f: %v\n", model, tc.Name, temp, err)
@@ -254,31 +270,19 @@ func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model str
 	return result
 }
 
-// calculateScore calculates a quality score for the response
-func calculateScore(resp *llmclient.Response) float64 {
-	// Simple scoring based on response characteristics
-	// In a real evaluator, you would use more sophisticated metrics
-	score := 0.0
-
-	// Base score for getting a response
-	if len(resp.Content) > 0 {
-		score += 0.5
+// evaluateResponse uses the evaluator agent to assess response quality
+func evaluateResponse(ctx context.Context, testCaseName string, question string, answer string) (*evaluator.EvaluationResult, error) {
+	criteria := evaluator.GetCriteria()
+	evalCriteria, ok := criteria[testCaseName]
+	if !ok {
+		return nil, fmt.Errorf("no evaluation criteria found for test case: %s", testCaseName)
 	}
 
-	// Score based on response length (reasonable length is good)
-	contentLen := len(resp.Content)
-	if contentLen >= 20 && contentLen <= 500 {
-		score += 0.3
-	} else if contentLen > 500 {
-		score += 0.2
-	}
+	// Create evaluator agent with test-case-specific system prompt
+	agent := evaluator.NewAgent(evaluatorAgent, evalCriteria.SystemPrompt)
 
-	// Score based on token efficiency
-	if resp.CompletionTokens > 0 && resp.CompletionTokens < 200 {
-		score += 0.2
-	}
-
-	return score
+	// Evaluate the response
+	return agent.Evaluate(ctx, question, answer, evalCriteria.Reference)
 }
 
 // reportAggregateMetrics calculates and reports aggregate metrics
@@ -296,7 +300,11 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 	totalTurnaroundTimeMs := 0.0
 	totalGenerationTimeMs := 0.0
 	successCount := 0
-	totalScore := 0.0
+	totalEvalScore := 0.0
+	evalCount := 0
+	evalYesCount := 0
+	evalNoCount := 0
+	evalUnsureCount := 0
 
 	for _, r := range results {
 		if r.Success {
@@ -319,7 +327,22 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 			}
 
 			successCount++
-			totalScore += r.Score
+
+			// Track evaluation scores if available
+			if r.EvalResponse != "" {
+				totalEvalScore += r.EvalScore
+				evalCount++
+
+				// Count response types
+				switch r.EvalResponse {
+				case "yes":
+					evalYesCount++
+				case "no":
+					evalNoCount++
+				case "unsure":
+					evalUnsureCount++
+				}
+			}
 		}
 	}
 
@@ -332,7 +355,8 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 		b.ReportMetric(0, "prompt_eval_p95_ms")
 		b.ReportMetric(0, "tokens_per_op")
 		b.ReportMetric(successRate, "success_rate")
-		b.ReportMetric(0, "score")
+		b.ReportMetric(0, "eval_score")
+		b.ReportMetric(0, "eval_pass_rate")
 		b.ReportMetric(0, "tokens_per_sec")
 		b.ReportMetric(0, "output_tokens_per_sec")
 		return
@@ -363,7 +387,14 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 
 	avgTotalTokens := float64(totalPromptTokens+totalCompletionTokens) / float64(successCount)
 	successRate := float64(successCount) / float64(len(results))
-	avgScore := totalScore / float64(successCount)
+
+	// Calculate evaluator metrics
+	avgEvalScore := 0.0
+	evalPassRate := 0.0
+	if evalCount > 0 {
+		avgEvalScore = totalEvalScore / float64(evalCount)
+		evalPassRate = float64(evalYesCount) / float64(evalCount)
+	}
 
 	// Calculate TPS = (Input Tokens + Output Tokens) / Total Turnaround Time (TAT in seconds)
 	// This represents average TPS accounting for both input and output tokens
@@ -391,7 +422,8 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 	b.ReportMetric(promptEvalP95, "prompt_eval_p95_ms")
 	b.ReportMetric(avgTotalTokens, "tokens_per_op")
 	b.ReportMetric(successRate, "success_rate")
-	b.ReportMetric(avgScore, "score")
+	b.ReportMetric(avgEvalScore, "eval_score")
+	b.ReportMetric(evalPassRate, "eval_pass_rate")
 	b.ReportMetric(tokensPerSec, "tokens_per_sec")
 	b.ReportMetric(outputTokensPerSec, "output_tokens_per_sec")
 }
@@ -410,7 +442,9 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	totalTurnaroundTimeMs := 0.0
 	totalGenerationTimeMs := 0.0
 	successCount := 0
-	totalScore := 0.0
+	totalEvalScore := 0.0
+	evalCount := 0
+	evalYesCount := 0
 
 	for _, r := range results {
 		if r.Success {
@@ -433,14 +467,22 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 			}
 
 			successCount++
-			totalScore += r.Score
+
+			// Track evaluation scores
+			if r.EvalResponse != "" {
+				totalEvalScore += r.EvalScore
+				evalCount++
+				if r.EvalResponse == "yes" {
+					evalYesCount++
+				}
+			}
 		}
 	}
 
 	if len(latencies) == 0 {
 		// No successful results - still update with correct success rate (which will be 0)
 		successRate := float64(successCount) / float64(len(results))
-		metricsCollector.UpdateAggregates(model, testCase, temp, 0, 0, 0, 0, 0, 0, successRate, 0, 0, 0, 0, 0)
+		metricsCollector.UpdateAggregates(model, testCase, temp, 0, 0, 0, 0, 0, 0, successRate, 0, 0, 0, 0, 0, 0)
 		return
 	}
 
@@ -469,7 +511,14 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 
 	avgTotalTokens := float64(totalPromptTokens+totalCompletionTokens) / float64(successCount)
 	successRate := float64(successCount) / float64(len(results))
-	avgScore := totalScore / float64(successCount)
+
+	// Calculate evaluator metrics
+	avgEvalScore := 0.0
+	evalPassRate := 0.0
+	if evalCount > 0 {
+		avgEvalScore = totalEvalScore / float64(evalCount)
+		evalPassRate = float64(evalYesCount) / float64(evalCount)
+	}
 
 	// Calculate TPS = (Input Tokens + Output Tokens) / Total Turnaround Time (TAT in seconds)
 	avgTurnaroundTimeSec := (totalTurnaroundTimeMs / float64(successCount)) / 1000.0
@@ -487,7 +536,7 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	}
 
 	// nsPerOp is passed in from the Go benchmark framework (b.Elapsed() / b.N)
-	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgScore, tokensPerSec, outputTokensPerSec, nsPerOp)
+	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp)
 }
 
 // percentile calculates the nth percentile of a sorted slice

@@ -179,7 +179,8 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 	promNsPerOp := semconv.ToPrometheusMetricName(semconv.MetricLLMNsPerOp)
 	promGPUUtilization := semconv.ToPrometheusMetricName(semconv.MetricGPUUtilization)
 	promGPUMemory := semconv.ToPrometheusMetricName(semconv.MetricGPUMemory)
-	promScore := semconv.ToPrometheusMetricName(semconv.MetricLLMScore)
+	promEvalScore := semconv.ToPrometheusMetricName(semconv.MetricLLMEvalScore)
+	promEvalPassRate := semconv.ToPrometheusMetricName(semconv.MetricLLMEvalPassRate)
 
 	dashboard := map[string]interface{}{
 		"dashboard": map[string]interface{}{
@@ -276,11 +277,12 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				createNoLabelTimeseriesPanel(10, "GPU Utilization", "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}),
 				createNoLabelTimeseriesPanel(11, "GPU Memory Usage", "GPU Memory", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil),
 
-				// Score metric
-				createSimpleTimeseriesPanel(12, "Score per Operation", promScore, 0, 40, 24, 8, "short", map[string]interface{}{"min": 0, "max": 1}),
+				// Evaluator metrics
+				createSimpleTimeseriesPanel(12, "Evaluator Score", promEvalScore, 0, 40, 12, 8, "short", map[string]interface{}{"min": 0, "max": 1}),
+				createSimpleTimeseriesPanel(13, "Evaluator Pass Rate", promEvalPassRate, 12, 40, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}),
 
 				// ns/op metric (Go benchmark) - moved to bottom
-				createSimpleTimeseriesPanel(13, "ns/op (Go Benchmark)", promNsPerOp, 0, 48, 24, 8, "ns", nil),
+				createSimpleTimeseriesPanel(14, "ns/op (Go Benchmark)", promNsPerOp, 0, 48, 24, 8, "ns", nil),
 			},
 		},
 		"overwrite": true,

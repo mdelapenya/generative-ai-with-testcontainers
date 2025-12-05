@@ -1,0 +1,1 @@
+The sum of all numbers from 1 to 100 (inclusive) is 5050. This can be calculated using the formula n(n+1)/2 where n=100, giving 100*101/2 = 5050.

@@ -74,31 +74,45 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 
 ## Running the Example
 
+### ⚠️ Important: Evaluator Model Recommendation
+
+**For accurate quality assessments, we strongly recommend using OpenAI GPT-4o-mini as the evaluator agent** (not just for benchmarking). The evaluator judges the quality of all SLM responses, so using a high-quality evaluator is critical for reliable results.
+
+**Why use GPT-4o-mini as evaluator?**
+- Ensures accurate assessment of SLM responses
+- Better at following JSON formatting requirements
+- More consistent and reliable evaluation scores
+- Cost-effective for evaluation workloads
+
+See [EVALUATOR.md](./EVALUATOR.md) for complete details on evaluator model selection.
+
 ### Apple Silicon (M1/M2/M3/M4) - Recommended
 
-**With GPU metrics** (requires sudo for utilization tracking):
+**With GPU metrics and OpenAI evaluator** (RECOMMENDED):
 ```sh
+export OPENAI_API_KEY="your-api-key-here"
 sudo go test -bench=. -benchtime=5x -timeout=30m
 ```
 
-**With OpenAI GPT-5.1** (optional):
+**With GPU metrics only** (requires sudo for utilization tracking):
 ```sh
-export OPENAI_API_KEY="your-api-key-here"
 sudo go test -bench=. -benchtime=5x -timeout=30m
 ```
 
 **Why sudo?** Apple Silicon requires `powermetrics` for GPU utilization metrics. Without sudo, you'll only see GPU memory (not utilization). The benchmark works fine without sudo, but you'll get more complete GPU metrics with it.
 
+**Why OPENAI_API_KEY?** Sets GPT-4o-mini as the evaluator agent for accurate quality assessments of all benchmarked models. Without it, a local SLM will be used as evaluator (less accurate).
+
 ### Other Platforms (Linux/Windows with NVIDIA)
 
-**Basic usage**:
+**With OpenAI evaluator** (RECOMMENDED):
 ```sh
+export OPENAI_API_KEY="your-api-key-here"
 go test -bench=. -benchtime=5x -timeout=30m
 ```
 
-**With OpenAI**:
+**Basic usage** (local evaluator - less accurate):
 ```sh
-export OPENAI_API_KEY="your-api-key-here"
 go test -bench=. -benchtime=5x -timeout=30m
 ```
 
@@ -196,10 +210,12 @@ The dashboard **"LLM Bench (DMR + Testcontainers)"** includes 10 panels with tem
 - **Memory**: MB consumed (check model fits your GPU)
 - Requires host execution (not containers); see "GPU Metrics" section above
 
-#### 10. Score per Operation
-- Quality rating (0.0-1.0) based on response characteristics
-- Customizable in `calculateScore` function
-- Balance with speed and success rate
+#### 10. Evaluator Score & Pass Rate
+- **Evaluator Score**: Average quality rating (0.0-1.0) from the LLM evaluator agent
+- **Pass Rate**: Percentage of responses marked as "yes" by the evaluator
+- Based on test-case-specific evaluation criteria (see [EVALUATOR.md](./EVALUATOR.md))
+- Customize by editing system prompts in `evaluator/testdata/evaluation/`
+- Balance quality scores with speed and success rate
 
 ### Dashboard Template Variables
 
@@ -277,13 +293,23 @@ Filter results by:
 
 ## Extending the Benchmark
 
+### Customizing Models and Test Cases
+
 Edit `bench_llm_test.go` to customize:
 
 - **External API Models**: Edit `getModelsToTest()` - external models skip pull step and run first
 - **Local Models**: Edit `localModels` slice (must be in [Docker's GenAI catalog](https://hub.docker.com/catalogs/gen-ai))
-- **Temperatures**: Edit `temperatures` slice (line ~71)
-- **Test Cases**: Edit `testCases` slice (line ~42)
-- **Quality Scoring**: Improve `calculateScore()` (line ~243) with:
-  - Semantic similarity vs expected outputs
-  - LLM-as-evaluator (Evaluator Agent pattern)
-  - BLEU, ROUGE, or task-specific validators
+- **Temperatures**: Edit `temperatures` slice (line ~76)
+- **Test Cases**: Edit `testCases` slice (line ~47)
+
+### Customizing Quality Evaluation
+
+The benchmark uses an **Evaluator Agent pattern** (LLM-as-evaluator) for quality scoring. See [EVALUATOR.md](./EVALUATOR.md) for complete details.
+
+To customize evaluation:
+
+1. **Edit existing evaluation criteria**: Modify system prompts in `evaluator/testdata/evaluation/{test-case}/system_prompt.txt`
+2. **Add new test cases**: Create new folders with `system_prompt.txt` and `reference.txt` files
+3. **Use different evaluator models**: Set `OPENAI_API_KEY` for GPT-4o-mini (recommended) or modify `bench_main_test.go` to use other models
+
+**Important**: Keep system prompts compact to avoid JSON truncation issues. Always instruct the evaluator to summarize, not copy full answers or code.

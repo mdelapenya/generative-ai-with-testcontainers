@@ -1,0 +1,1 @@
+A good Fibonacci joke should reference the sequence's properties (recursion, pattern, famous numbers) and include elements of humor, wordplay, or wit. Examples might play on the recursive nature, the golden ratio, or the sequence appearing in nature.
