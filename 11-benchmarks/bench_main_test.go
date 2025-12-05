@@ -25,7 +25,7 @@ var (
 func TestMain(m *testing.M) {
 	loadErr := godotenv.Load()
 	if loadErr != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("No .env file found, continuing without it: %v", loadErr)
 	}
 
 	// Load the models to benchmark
