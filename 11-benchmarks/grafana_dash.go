@@ -7,7 +7,153 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
 )
+
+// createPercentilePanel creates a timeseries panel showing p50 and p95 percentiles
+func createPercentilePanel(id int, title string, p50Metric, p95Metric string, x, y int, unit string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":      id,
+		"type":    "timeseries",
+		"title":   title,
+		"gridPos": map[string]int{"x": x, "y": y, "w": 12, "h": 8},
+		"targets": []map[string]interface{}{
+			{
+				"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
+					p50Metric, semconv.AttrModel, semconv.AttrModel, semconv.AttrCase, semconv.AttrCase, semconv.AttrTemp, semconv.AttrTemp),
+				"legendFormat": fmt.Sprintf("p50 - {{%s}} - {{%s}} (T={{%s}})", semconv.AttrModel, semconv.AttrCase, semconv.AttrTemp),
+				"datasource": map[string]interface{}{
+					"type": "prometheus",
+					"uid":  "prometheus",
+				},
+				"refId": "A",
+			},
+			{
+				"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
+					p95Metric, semconv.AttrModel, semconv.AttrModel, semconv.AttrCase, semconv.AttrCase, semconv.AttrTemp, semconv.AttrTemp),
+				"legendFormat": fmt.Sprintf("p95 - {{%s}} - {{%s}} (T={{%s}})", semconv.AttrModel, semconv.AttrCase, semconv.AttrTemp),
+				"datasource": map[string]interface{}{
+					"type": "prometheus",
+					"uid":  "prometheus",
+				},
+				"refId": "B",
+			},
+		},
+		"fieldConfig": map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"unit": unit,
+			},
+		},
+	}
+}
+
+// createHistogramPanel creates a histogram panel with exemplar support
+func createHistogramPanel(id int, title string, bucketMetric string, x, y int, unit string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":      id,
+		"type":    "histogram",
+		"title":   title,
+		"gridPos": map[string]int{"x": x, "y": y, "w": 12, "h": 8},
+		"targets": []map[string]interface{}{
+			{
+				"expr": fmt.Sprintf("rate(%s_bucket{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}[5m])",
+					bucketMetric, semconv.AttrModel, semconv.AttrModel, semconv.AttrCase, semconv.AttrCase, semconv.AttrTemp, semconv.AttrTemp),
+				"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}}) - {{le}}", semconv.AttrModel, semconv.AttrCase, semconv.AttrTemp),
+				"datasource": map[string]interface{}{
+					"type": "prometheus",
+					"uid":  "prometheus",
+				},
+				"refId":    "A",
+				"exemplar": true,
+			},
+		},
+		"fieldConfig": map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"unit": unit,
+			},
+		},
+		"options": map[string]interface{}{
+			"legend": map[string]interface{}{
+				"displayMode": "list",
+				"placement":   "bottom",
+			},
+		},
+	}
+}
+
+// createSimpleTimeseriesPanel creates a basic timeseries panel with a single metric
+func createSimpleTimeseriesPanel(id int, title string, metric string, x, y, w, h int, unit string, minMax map[string]interface{}) map[string]interface{} {
+	panel := map[string]interface{}{
+		"id":      id,
+		"type":    "timeseries",
+		"title":   title,
+		"gridPos": map[string]int{"x": x, "y": y, "w": w, "h": h},
+		"targets": []map[string]interface{}{
+			{
+				"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
+					metric, semconv.AttrModel, semconv.AttrModel, semconv.AttrCase, semconv.AttrCase, semconv.AttrTemp, semconv.AttrTemp),
+				"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}})", semconv.AttrModel, semconv.AttrCase, semconv.AttrTemp),
+				"datasource": map[string]interface{}{
+					"type": "prometheus",
+					"uid":  "prometheus",
+				},
+				"refId": "A",
+			},
+		},
+		"fieldConfig": map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"unit": unit,
+			},
+		},
+	}
+
+	// Add min/max if provided
+	if minMax != nil {
+		defaults := panel["fieldConfig"].(map[string]interface{})["defaults"].(map[string]interface{})
+		for k, v := range minMax {
+			defaults[k] = v
+		}
+	}
+
+	return panel
+}
+
+// createNoLabelTimeseriesPanel creates a timeseries panel without label filters (for GPU metrics)
+func createNoLabelTimeseriesPanel(id int, title, legendFormat string, metric string, x, y, w, h int, unit string, minMax map[string]interface{}) map[string]interface{} {
+	panel := map[string]interface{}{
+		"id":      id,
+		"type":    "timeseries",
+		"title":   title,
+		"gridPos": map[string]int{"x": x, "y": y, "w": w, "h": h},
+		"targets": []map[string]interface{}{
+			{
+				"expr":         metric,
+				"legendFormat": legendFormat,
+				"datasource": map[string]interface{}{
+					"type": "prometheus",
+					"uid":  "prometheus",
+				},
+				"refId": "A",
+			},
+		},
+		"fieldConfig": map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"unit": unit,
+			},
+		},
+	}
+
+	// Add min/max if provided
+	if minMax != nil {
+		defaults := panel["fieldConfig"].(map[string]interface{})["defaults"].(map[string]interface{})
+		for k, v := range minMax {
+			defaults[k] = v
+		}
+	}
+
+	return panel
+}
 
 // CreateGrafanaDashboard creates a Grafana dashboard for LLM benchmarks
 // Uses a fixed UID to ensure the same dashboard is replaced on each run (no duplicates)
@@ -18,18 +164,21 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 	}
 
 	// Convert OTel metric names to Prometheus format
-	promLatencyP50 := ToPrometheusMetricName(MetricLLMLatencyP50)
-	promLatencyP95 := ToPrometheusMetricName(MetricLLMLatencyP95)
-	promLatency := ToPrometheusMetricName(MetricLLMLatency)
-	promPromptEvalTimeP50 := ToPrometheusMetricName(MetricLLMPromptEvalTimeP50)
-	promPromptEvalTimeP95 := ToPrometheusMetricName(MetricLLMPromptEvalTimeP95)
-	promPromptEvalTime := ToPrometheusMetricName(MetricLLMPromptEvalTime)
-	promTokensPerOp := ToPrometheusMetricName(MetricLLMTokensPerOp)
-	promSuccessRate := ToPrometheusMetricName(MetricLLMSuccessRate)
-	promTokensPerSecond := ToPrometheusMetricName(MetricLLMTokensPerSecond)
-	promGPUUtilization := ToPrometheusMetricName(MetricGPUUtilization)
-	promGPUMemory := ToPrometheusMetricName(MetricGPUMemory)
-	promScore := ToPrometheusMetricName(MetricLLMScore)
+	promLatencyP50 := semconv.ToPrometheusMetricName(semconv.MetricLLMLatencyP50)
+	promLatencyP95 := semconv.ToPrometheusMetricName(semconv.MetricLLMLatencyP95)
+	promLatency := semconv.ToPrometheusMetricName(semconv.MetricLLMLatency)
+	promTTFTP50 := semconv.ToPrometheusMetricName(semconv.MetricLLMTTFTP50)
+	promTTFTP95 := semconv.ToPrometheusMetricName(semconv.MetricLLMTTFTP95)
+	promTTFT := semconv.ToPrometheusMetricName(semconv.MetricLLMTTFT)
+	promPromptEvalTimeP50 := semconv.ToPrometheusMetricName(semconv.MetricLLMPromptEvalTimeP50)
+	promPromptEvalTimeP95 := semconv.ToPrometheusMetricName(semconv.MetricLLMPromptEvalTimeP95)
+	promPromptEvalTime := semconv.ToPrometheusMetricName(semconv.MetricLLMPromptEvalTime)
+	promTokensPerOp := semconv.ToPrometheusMetricName(semconv.MetricLLMTokensPerOp)
+	promSuccessRate := semconv.ToPrometheusMetricName(semconv.MetricLLMSuccessRate)
+	promTokensPerSecond := semconv.ToPrometheusMetricName(semconv.MetricLLMTokensPerSecond)
+	promGPUUtilization := semconv.ToPrometheusMetricName(semconv.MetricGPUUtilization)
+	promGPUMemory := semconv.ToPrometheusMetricName(semconv.MetricGPUMemory)
+	promScore := semconv.ToPrometheusMetricName(semconv.MetricLLMScore)
 
 	dashboard := map[string]interface{}{
 		"dashboard": map[string]interface{}{
@@ -43,11 +192,11 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 			"templating": map[string]interface{}{
 				"list": []map[string]interface{}{
 					{
-						"name":       AttrModel,
+						"name":       semconv.AttrModel,
 						"label":      "Model",
 						"type":       "query",
-						"query":      fmt.Sprintf("label_values(%s, %s)", promLatencyP50, AttrModel),
-						"definition": fmt.Sprintf("label_values(%s, %s)", promLatencyP50, AttrModel),
+						"query":      fmt.Sprintf("label_values(%s, %s)", promLatencyP50, semconv.AttrModel),
+						"definition": fmt.Sprintf("label_values(%s, %s)", promLatencyP50, semconv.AttrModel),
 						"datasource": map[string]interface{}{
 							"type": "prometheus",
 							"uid":  "prometheus",
@@ -63,11 +212,11 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 						"allValue":   ".*",
 					},
 					{
-						"name":       AttrCase,
+						"name":       semconv.AttrCase,
 						"label":      "Test Case",
 						"type":       "query",
-						"query":      fmt.Sprintf("label_values(%s, %s)", promLatencyP50, AttrCase),
-						"definition": fmt.Sprintf("label_values(%s, %s)", promLatencyP50, AttrCase),
+						"query":      fmt.Sprintf("label_values(%s, %s)", promLatencyP50, semconv.AttrCase),
+						"definition": fmt.Sprintf("label_values(%s, %s)", promLatencyP50, semconv.AttrCase),
 						"datasource": map[string]interface{}{
 							"type": "prometheus",
 							"uid":  "prometheus",
@@ -83,11 +232,11 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 						"allValue":   ".*",
 					},
 					{
-						"name":       AttrTemp,
+						"name":       semconv.AttrTemp,
 						"label":      "Temperature",
 						"type":       "query",
-						"query":      fmt.Sprintf("label_values(%s, %s)", promLatencyP50, AttrTemp),
-						"definition": fmt.Sprintf("label_values(%s, %s)", promLatencyP50, AttrTemp),
+						"query":      fmt.Sprintf("label_values(%s, %s)", promLatencyP50, semconv.AttrTemp),
+						"definition": fmt.Sprintf("label_values(%s, %s)", promLatencyP50, semconv.AttrTemp),
 						"datasource": map[string]interface{}{
 							"type": "prometheus",
 							"uid":  "prometheus",
@@ -105,274 +254,29 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				},
 			},
 			"panels": []map[string]interface{}{
-				{
-					"id":      1,
-					"type":    "timeseries",
-					"title":   "Latency Percentiles (p50/p95)",
-					"gridPos": map[string]int{"x": 0, "y": 0, "w": 12, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promLatencyP50, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("p50 - {{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promLatencyP95, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("p95 - {{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "B",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "ms",
-						},
-					},
-				},
-				{
-					"id":      2,
-					"type":    "histogram",
-					"title":   "Latency Distribution (with Exemplars)",
-					"gridPos": map[string]int{"x": 12, "y": 0, "w": 12, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("rate(%s_bucket{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}[5m])",
-								promLatency, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}}) - {{le}}", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId":    "A",
-							"exemplar": true,
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "ms",
-						},
-					},
-					"options": map[string]interface{}{
-						"legend": map[string]interface{}{
-							"displayMode": "list",
-							"placement":   "bottom",
-						},
-					},
-				},
-				{
-					"id":      3,
-					"type":    "timeseries",
-					"title":   "Prompt Evaluation Time (p50/p95)",
-					"gridPos": map[string]int{"x": 0, "y": 8, "w": 12, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promPromptEvalTimeP50, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("p50 - {{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promPromptEvalTimeP95, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("p95 - {{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "B",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "ms",
-						},
-					},
-				},
-				{
-					"id":      4,
-					"type":    "histogram",
-					"title":   "Prompt Eval Time Distribution (with Exemplars)",
-					"gridPos": map[string]int{"x": 12, "y": 8, "w": 12, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("rate(%s_bucket{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}[5m])",
-								promPromptEvalTime, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}}) - {{le}}", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId":    "A",
-							"exemplar": true,
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "ms",
-						},
-					},
-					"options": map[string]interface{}{
-						"legend": map[string]interface{}{
-							"displayMode": "list",
-							"placement":   "bottom",
-						},
-					},
-				},
-				{
-					"id":      5,
-					"type":    "timeseries",
-					"title":   "Tokens per Operation",
-					"gridPos": map[string]int{"x": 0, "y": 16, "w": 8, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promTokensPerOp, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "short",
-						},
-					},
-				},
-				{
-					"id":      6,
-					"type":    "timeseries",
-					"title":   "Success Rate",
-					"gridPos": map[string]int{"x": 8, "y": 16, "w": 8, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promSuccessRate, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "percentunit",
-							"min":  0,
-							"max":  1,
-						},
-					},
-				},
-				{
-					"id":      7,
-					"type":    "timeseries",
-					"title":   "Tokens per Second",
-					"gridPos": map[string]int{"x": 16, "y": 16, "w": 8, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promTokensPerSecond, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "short",
-						},
-					},
-				},
-				{
-					"id":      8,
-					"type":    "timeseries",
-					"title":   "GPU Utilization",
-					"gridPos": map[string]int{"x": 0, "y": 24, "w": 12, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr":         promGPUUtilization,
-							"legendFormat": "GPU Utilization",
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "percent",
-							"min":  0,
-							"max":  100,
-						},
-					},
-				},
-				{
-					"id":      9,
-					"type":    "timeseries",
-					"title":   "GPU Memory Usage",
-					"gridPos": map[string]int{"x": 12, "y": 24, "w": 12, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr":         promGPUMemory,
-							"legendFormat": "GPU Memory",
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "decmbytes",
-						},
-					},
-				},
-				{
-					"id":      10,
-					"type":    "timeseries",
-					"title":   "Score per Operation",
-					"gridPos": map[string]int{"x": 0, "y": 32, "w": 24, "h": 8},
-					"targets": []map[string]interface{}{
-						{
-							"expr": fmt.Sprintf("%s{%s=~\"$%s\", %s=~\"$%s\", %s=~\"$%s\"}",
-								promScore, AttrModel, AttrModel, AttrCase, AttrCase, AttrTemp, AttrTemp),
-							"legendFormat": fmt.Sprintf("{{%s}} - {{%s}} (T={{%s}})", AttrModel, AttrCase, AttrTemp),
-							"datasource": map[string]interface{}{
-								"type": "prometheus",
-								"uid":  "prometheus",
-							},
-							"refId": "A",
-						},
-					},
-					"fieldConfig": map[string]interface{}{
-						"defaults": map[string]interface{}{
-							"unit": "short",
-							"min":  0,
-							"max":  1,
-						},
-					},
-				},
+				// Latency metrics
+				createPercentilePanel(1, "Latency Percentiles (p50/p95)", promLatencyP50, promLatencyP95, 0, 0, "ms"),
+				createHistogramPanel(2, "Latency Distribution (with Exemplars)", promLatency, 12, 0, "ms"),
+
+				// TTFT metrics
+				createPercentilePanel(3, "TTFT Percentiles (p50/p95)", promTTFTP50, promTTFTP95, 0, 8, "ms"),
+				createHistogramPanel(4, "TTFT Distribution (with Exemplars)", promTTFT, 12, 8, "ms"),
+
+				// Prompt Evaluation Time metrics
+				createPercentilePanel(5, "Prompt Evaluation Time (p50/p95)", promPromptEvalTimeP50, promPromptEvalTimeP95, 0, 16, "ms"),
+				createHistogramPanel(6, "Prompt Eval Time Distribution (with Exemplars)", promPromptEvalTime, 12, 16, "ms"),
+
+				// Other metrics
+				createSimpleTimeseriesPanel(7, "Tokens per Operation", promTokensPerOp, 0, 24, 8, 8, "short", nil),
+				createSimpleTimeseriesPanel(8, "Success Rate", promSuccessRate, 8, 24, 8, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}),
+				createSimpleTimeseriesPanel(9, "Tokens per Second", promTokensPerSecond, 16, 24, 8, 8, "short", nil),
+
+				// GPU metrics
+				createNoLabelTimeseriesPanel(10, "GPU Utilization", "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}),
+				createNoLabelTimeseriesPanel(11, "GPU Memory Usage", "GPU Memory", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil),
+
+				// Score metric
+				createSimpleTimeseriesPanel(12, "Score per Operation", promScore, 0, 40, 24, 8, "short", map[string]interface{}{"min": 0, "max": 1}),
 			},
 		},
 		"overwrite": true,

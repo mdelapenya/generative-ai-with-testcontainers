@@ -129,7 +129,8 @@ type BenchmarkResult struct {
 	TestCase         string
 	Temp             float64
 	Latency          time.Duration // Total turnaround time (TAT)
-	PromptEvalTime   time.Duration // Time to evaluate prompt (time to first token)
+	TTFT             time.Duration // Time To First Token (measured via streaming)
+	PromptEvalTime   time.Duration // Time to evaluate prompt (from model metadata if available)
 	PromptTokens     int           // Input tokens
 	CompletionTokens int           // Output tokens generated
 	TotalTokens      int           // Total tokens (prompt + completion)
@@ -184,6 +185,11 @@ func BenchmarkLLMs(b *testing.B) {
 						// Record latency with OpenTelemetry
 						metricsCollector.RecordLatency(ctx, result.Latency, modelName, tc.Name, temp)
 
+						// Record TTFT with OpenTelemetry
+						if result.TTFT > 0 {
+							metricsCollector.RecordTTFT(ctx, result.TTFT, modelName, tc.Name, temp)
+						}
+
 						// Record prompt evaluation time with OpenTelemetry
 						if result.PromptEvalTime > 0 {
 							metricsCollector.RecordPromptEvalTime(ctx, result.PromptEvalTime, modelName, tc.Name, temp)
@@ -227,6 +233,7 @@ func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model str
 
 	if err == nil {
 		result.Latency = resp.Latency
+		result.TTFT = resp.TTFT
 		result.PromptEvalTime = resp.PromptEvalTime
 		result.PromptTokens = resp.PromptTokens
 		result.CompletionTokens = resp.CompletionTokens
@@ -275,6 +282,7 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 
 	// Calculate latency percentiles
 	latencies := make([]float64, 0, len(results))
+	ttfts := make([]float64, 0, len(results))
 	promptEvalTimes := make([]float64, 0, len(results))
 	totalPromptTokens := 0
 	totalCompletionTokens := 0
@@ -285,7 +293,11 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 
 	for _, r := range results {
 		if r.Success {
+			// Store in milliseconds to match histogram metrics
 			latencies = append(latencies, float64(r.Latency.Milliseconds()))
+			if r.TTFT > 0 {
+				ttfts = append(ttfts, float64(r.TTFT.Milliseconds()))
+			}
 			if r.PromptEvalTime > 0 {
 				promptEvalTimes = append(promptEvalTimes, float64(r.PromptEvalTime.Milliseconds()))
 			}
@@ -293,8 +305,8 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 			totalCompletionTokens += r.CompletionTokens
 			totalTurnaroundTimeMs += float64(r.Latency.Milliseconds())
 
-			// Generation time = Total time - Prompt eval time
-			generationTime := r.Latency - r.PromptEvalTime
+			// Generation time = Total time - TTFT (more accurate than using PromptEvalTime)
+			generationTime := r.Latency - r.TTFT
 			if generationTime > 0 {
 				totalGenerationTimeMs += float64(generationTime.Milliseconds())
 			}
@@ -323,6 +335,15 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 
 	p50 := percentile(latencies, 50)
 	p95 := percentile(latencies, 95)
+
+	// Calculate TTFT percentiles
+	ttftP50 := 0.0
+	ttftP95 := 0.0
+	if len(ttfts) > 0 {
+		sort.Float64s(ttfts)
+		ttftP50 = percentile(ttfts, 50)
+		ttftP95 = percentile(ttfts, 95)
+	}
 
 	// Calculate prompt eval time percentiles
 	promptEvalP50 := 0.0
@@ -354,9 +375,11 @@ func reportAggregateMetrics(b *testing.B, results []BenchmarkResult) {
 		outputTokensPerSec = avgOutputTokens / avgGenerationTimeSec
 	}
 
-	// Report custom metrics
+	// Report custom metrics in milliseconds
 	b.ReportMetric(p50, "latency_p50_ms")
 	b.ReportMetric(p95, "latency_p95_ms")
+	b.ReportMetric(ttftP50, "ttft_p50_ms")
+	b.ReportMetric(ttftP95, "ttft_p95_ms")
 	b.ReportMetric(promptEvalP50, "prompt_eval_p50_ms")
 	b.ReportMetric(promptEvalP95, "prompt_eval_p95_ms")
 	b.ReportMetric(avgTotalTokens, "tokens_per_op")
@@ -373,6 +396,7 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	}
 
 	latencies := make([]float64, 0, len(results))
+	ttfts := make([]float64, 0, len(results))
 	promptEvalTimes := make([]float64, 0, len(results))
 	totalPromptTokens := 0
 	totalCompletionTokens := 0
@@ -383,7 +407,11 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 
 	for _, r := range results {
 		if r.Success {
+			// Store in milliseconds to match histogram metrics
 			latencies = append(latencies, float64(r.Latency.Milliseconds()))
+			if r.TTFT > 0 {
+				ttfts = append(ttfts, float64(r.TTFT.Milliseconds()))
+			}
 			if r.PromptEvalTime > 0 {
 				promptEvalTimes = append(promptEvalTimes, float64(r.PromptEvalTime.Milliseconds()))
 			}
@@ -391,8 +419,8 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 			totalCompletionTokens += r.CompletionTokens
 			totalTurnaroundTimeMs += float64(r.Latency.Milliseconds())
 
-			// Generation time = Total time - Prompt eval time
-			generationTime := r.Latency - r.PromptEvalTime
+			// Generation time = Total time - TTFT (more accurate than using PromptEvalTime)
+			generationTime := r.Latency - r.TTFT
 			if generationTime > 0 {
 				totalGenerationTimeMs += float64(generationTime.Milliseconds())
 			}
@@ -405,7 +433,7 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	if len(latencies) == 0 {
 		// No successful results - still update with correct success rate (which will be 0)
 		successRate := float64(successCount) / float64(len(results))
-		metricsCollector.UpdateAggregates(model, testCase, temp, 0, 0, 0, 0, successRate, 0, 0, 0, 0)
+		metricsCollector.UpdateAggregates(model, testCase, temp, 0, 0, 0, 0, 0, 0, successRate, 0, 0, 0, 0)
 		return
 	}
 
@@ -413,6 +441,15 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 
 	p50 := percentile(latencies, 50)
 	p95 := percentile(latencies, 95)
+
+	// Calculate TTFT percentiles
+	ttftP50 := 0.0
+	ttftP95 := 0.0
+	if len(ttfts) > 0 {
+		sort.Float64s(ttfts)
+		ttftP50 = percentile(ttfts, 50)
+		ttftP95 = percentile(ttfts, 95)
+	}
 
 	// Calculate prompt eval time percentiles
 	promptEvalP50 := 0.0
@@ -442,7 +479,7 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 		outputTokensPerSec = avgOutputTokens / avgGenerationTimeSec
 	}
 
-	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgScore, tokensPerSec, outputTokensPerSec)
+	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgScore, tokensPerSec, outputTokensPerSec)
 }
 
 // percentile calculates the nth percentile of a sorted slice

@@ -7,25 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-)
-
-// Semantic convention constants for span attributes
-// These match the parent package's semconv.go to ensure consistency
-const (
-	AttrModel            = "model"
-	AttrSystemPrompt     = "system_prompt"
-	AttrUserPrompt       = "user_prompt"
-	AttrTemperature      = "temperature"
-	AttrPromptTokens     = "prompt_tokens"
-	AttrCompletionTokens = "completion_tokens"
-	AttrTotalTokens      = "total_tokens"
-	AttrLatencyMs        = "latency_ms"
-	AttrPromptEvalTimeMs = "prompt_eval_time_ms"
 )
 
 // Client wraps an LLM client with observability
@@ -42,7 +29,8 @@ type Response struct {
 	CompletionTokens int
 	TotalTokens      int
 	Latency          time.Duration
-	PromptEvalTime   time.Duration // Time to evaluate prompt (time to first token)
+	PromptEvalTime   time.Duration // Time to evaluate prompt (from model metadata if available)
+	TTFT             time.Duration // Time To First Token (actual measured via streaming)
 }
 
 // NewClient creates a new LLM client
@@ -85,10 +73,10 @@ func (c *Client) Generate(ctx context.Context, systemPrompt, userPrompt string) 
 func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt string, temperature float64) (*Response, error) {
 	ctx, span := c.tracer.Start(ctx, "llm.generate",
 		trace.WithAttributes(
-			attribute.String(AttrModel, c.model),
-			attribute.String(AttrSystemPrompt, systemPrompt),
-			attribute.String(AttrUserPrompt, userPrompt),
-			attribute.Float64(AttrTemperature, temperature),
+			attribute.String(semconv.AttrModel, c.model),
+			attribute.String(semconv.AttrSystemPrompt, systemPrompt),
+			attribute.String(semconv.AttrUserPrompt, userPrompt),
+			attribute.Float64(semconv.AttrTemperature, temperature),
 		),
 	)
 	defer span.End()
@@ -99,9 +87,21 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 	}
 
 	start := time.Now()
+	var ttft time.Duration
+	firstTokenReceived := false
+	var fullContent strings.Builder
 
+	// Use streaming to capture real TTFT
 	completion, err := c.llm.GenerateContent(ctx, content,
 		llms.WithTemperature(temperature),
+		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+			if !firstTokenReceived {
+				ttft = time.Since(start)
+				firstTokenReceived = true
+			}
+			fullContent.Write(chunk)
+			return nil
+		}),
 	)
 	if err != nil {
 		span.RecordError(err)
@@ -110,8 +110,15 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 
 	latency := time.Since(start)
 
-	if len(completion.Choices) == 0 {
-		return nil, fmt.Errorf("no choices returned from model")
+	// Get content from streaming or from response
+	responseContent := fullContent.String()
+	if responseContent == "" && len(completion.Choices) > 0 {
+		// Fallback to non-streaming response if streaming didn't work
+		responseContent = completion.Choices[0].Content
+	}
+
+	if responseContent == "" {
+		return nil, fmt.Errorf("no content returned from model")
 	}
 
 	// Extract token usage from GenerationInfo if available
@@ -120,7 +127,8 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 	totalTokens := 0
 	promptEvalTime := time.Duration(0)
 
-	if genInfo := completion.Choices[0].GenerationInfo; genInfo != nil {
+	if len(completion.Choices) > 0 && completion.Choices[0].GenerationInfo != nil {
+		genInfo := completion.Choices[0].GenerationInfo
 		if pt, ok := genInfo["PromptTokens"].(int); ok {
 			promptTokens = pt
 		} else {
@@ -129,7 +137,7 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 		if ct, ok := genInfo["CompletionTokens"].(int); ok {
 			completionTokens = ct
 		} else {
-			completionTokens = llms.CountTokens(c.model, completion.Choices[0].Content)
+			completionTokens = llms.CountTokens(c.model, responseContent)
 		}
 		if tt, ok := genInfo["TotalTokens"].(int); ok {
 			totalTokens = tt
@@ -149,33 +157,41 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 	// Fallback to estimation if token counts not provided by model
 	if totalTokens == 0 {
 		promptTokens = estimateTokens(systemPrompt + userPrompt)
-		completionTokens = estimateTokens(completion.Choices[0].Content)
+		completionTokens = estimateTokens(responseContent)
 		totalTokens = promptTokens + completionTokens
 	}
 
-	// Estimate prompt eval time if not provided
+	// Estimate prompt eval time if not provided by model metadata
+	// This is different from TTFT - it's the model's internal prompt processing time
 	// Typical models process prompts at ~100-500 tokens/sec for evaluation
 	// We'll use a conservative estimate of 200 tokens/sec
 	if promptEvalTime == 0 && promptTokens > 0 {
 		promptEvalTime = time.Duration(float64(promptTokens)/200.0*1000) * time.Millisecond
 	}
 
+	// If TTFT wasn't captured (streaming might not be supported), use latency as fallback
+	if ttft == 0 {
+		ttft = latency
+	}
+
 	resp := &Response{
-		Content:          completion.Choices[0].Content,
+		Content:          responseContent,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		TotalTokens:      totalTokens,
 		Latency:          latency,
 		PromptEvalTime:   promptEvalTime,
+		TTFT:             ttft,
 	}
 
 	// Add response metadata to span
 	span.SetAttributes(
-		attribute.Int(AttrPromptTokens, resp.PromptTokens),
-		attribute.Int(AttrCompletionTokens, resp.CompletionTokens),
-		attribute.Int(AttrTotalTokens, resp.TotalTokens),
-		attribute.Int64(AttrLatencyMs, latency.Milliseconds()),
-		attribute.Int64(AttrPromptEvalTimeMs, promptEvalTime.Milliseconds()),
+		attribute.Int(semconv.AttrPromptTokens, resp.PromptTokens),
+		attribute.Int(semconv.AttrCompletionTokens, resp.CompletionTokens),
+		attribute.Int(semconv.AttrTotalTokens, resp.TotalTokens),
+		attribute.Int64(semconv.AttrLatencyMs, latency.Milliseconds()),
+		attribute.Int64(semconv.AttrPromptEvalTimeMs, promptEvalTime.Milliseconds()),
+		attribute.Int64(semconv.AttrTTFTMs, ttft.Milliseconds()),
 	)
 
 	return resp, nil

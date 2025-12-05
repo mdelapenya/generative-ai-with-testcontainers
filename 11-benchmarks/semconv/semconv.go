@@ -1,0 +1,85 @@
+package semconv
+
+import "strings"
+
+// Semantic conventions for LLM benchmark metrics and attributes
+// This file defines constants for metric names and attribute keys to ensure consistency
+
+const (
+	// Metric names - using dot notation which OpenTelemetry will convert to underscores in Prometheus
+	MetricLLMLatency               = "llm.latency"
+	MetricLLMLatencyP50            = "llm.latency.p50"
+	MetricLLMLatencyP95            = "llm.latency.p95"
+	MetricLLMTTFT                  = "llm.ttft"
+	MetricLLMTTFTP50               = "llm.ttft.p50"
+	MetricLLMTTFTP95               = "llm.ttft.p95"
+	MetricLLMPromptEvalTime        = "llm.prompt_eval_time"
+	MetricLLMPromptEvalTimeP50     = "llm.prompt_eval_time.p50"
+	MetricLLMPromptEvalTimeP95     = "llm.prompt_eval_time.p95"
+	MetricLLMSuccessRate           = "llm.success_rate"
+	MetricLLMTokensPerOp           = "llm.tokens_per_op"
+	MetricLLMScore                 = "llm.score"
+	MetricLLMTokensPerSecond       = "llm.tokens_per_second"
+	MetricLLMOutputTokensPerSecond = "llm.output_tokens_per_second"
+	MetricGPUUtilization           = "gpu.utilization"
+	MetricGPUMemory                = "gpu.memory"
+
+	// Attribute keys - Metrics
+	AttrModel   = "model"
+	AttrCase    = "case"
+	AttrTemp    = "temp"
+	AttrTraceID = "trace_id"
+	AttrSpanID  = "span_id"
+
+	// Attribute keys - Spans (OpenTelemetry tracing)
+	AttrSystemPrompt     = "system_prompt"
+	AttrUserPrompt       = "user_prompt"
+	AttrTemperature      = "temperature"
+	AttrPromptTokens     = "prompt_tokens"
+	AttrCompletionTokens = "completion_tokens"
+	AttrTotalTokens      = "total_tokens"
+	AttrLatencyMs        = "latency_ms"
+	AttrTTFTMs           = "ttft_ms"
+	AttrPromptEvalTimeMs = "prompt_eval_time_ms"
+
+	// Metric units
+	UnitMilliseconds = "ms"
+	UnitPercent      = "%"
+	UnitMegabytes    = "MB"
+
+	// Metric descriptions
+	DescLLMLatency               = "Total latency of LLM requests in seconds"
+	DescLLMLatencyP50            = "50th percentile total latency in seconds"
+	DescLLMLatencyP95            = "95th percentile total latency in seconds"
+	DescLLMTTFT                  = "Time To First Token (measured via streaming) in seconds"
+	DescLLMTTFTP50               = "50th percentile TTFT in seconds"
+	DescLLMTTFTP95               = "95th percentile TTFT in seconds"
+	DescLLMPromptEvalTime        = "Prompt evaluation time from model metadata in seconds"
+	DescLLMPromptEvalTimeP50     = "50th percentile prompt evaluation time in seconds"
+	DescLLMPromptEvalTimeP95     = "95th percentile prompt evaluation time in seconds"
+	DescLLMSuccessRate           = "Success rate of LLM requests"
+	DescLLMTokensPerOp           = "Total tokens per operation"
+	DescLLMScore                 = "Average score per operation"
+	DescLLMTokensPerSecond       = "Total tokens per second (input + output / TAT)"
+	DescLLMOutputTokensPerSecond = "Output tokens per second (generation speed only)"
+	DescGPUUtilization           = "GPU utilization percentage"
+	DescGPUMemory                = "GPU memory usage in MB"
+)
+
+// ToPrometheusMetricName converts an OpenTelemetry metric name to Prometheus format
+// OpenTelemetry uses dots (.) but Prometheus converts them to underscores (_)
+// We're not using metric.WithUnit() to avoid automatic unit conversion by OTel,
+// so we don't append unit suffixes here. Units are handled by Grafana dashboards.
+func ToPrometheusMetricName(otelMetricName string) string {
+	promName := strings.ReplaceAll(otelMetricName, ".", "_")
+
+	// Special cases for GPU metrics that still use WithUnit()
+	switch otelMetricName {
+	case MetricGPUMemory:
+		return promName + "_MB" // OTel uses the literal unit string "MB"
+	case MetricGPUUtilization:
+		return promName + "_percent" // OTel converts "%" to "_percent"
+	default:
+		return promName
+	}
+}
