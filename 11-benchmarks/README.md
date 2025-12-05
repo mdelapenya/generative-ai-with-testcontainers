@@ -50,9 +50,11 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
   5. Creates OpenTelemetry traces with exemplars for each request.
   6. Reports aggregate metrics (p50, p95, tokens/sec, etc.).
 
-- `llmclient/llmclient.go`: Wraps LLM client with OpenTelemetry tracing. Automatically detects OpenAI endpoints and handles authentication via `OPENAI_API_KEY`.
+- `llmclient/llmclient.go`: Wraps LLM client with OpenTelemetry tracing and logging. Automatically detects OpenAI endpoints and handles authentication via `OPENAI_API_KEY`. Logs all model responses with prompts, tokens, and latency to Loki.
 
-- `otel_setup.go`: Initializes OpenTelemetry with OTLP exporters for traces and metrics.
+- `evaluator/evaluator.go`: Implements the Evaluator Agent pattern for quality assessment. Logs all evaluation results (question, answer, score, reasoning) to Loki for analysis.
+
+- `otel_setup.go`: Initializes OpenTelemetry with OTLP exporters for traces, metrics, and logs.
 
 - `metrics.go`: Defines histograms (latency, prompt eval time with exemplars) and gauges (p50/p95, success rate, tokens/sec, GPU metrics).
 
@@ -164,6 +166,44 @@ Open in browser (`admin`/`admin`) to view real-time metrics, latency distributio
 **What you'll see on Apple Silicon**:
 - **With sudo**: Both GPU memory spikes and utilization % during model inference
 - **Without sudo**: Only GPU memory (utilization will show 0%)
+
+## Logs and Observability
+
+All evaluator responses and model outputs are automatically logged to the Grafana LGTM stack (Loki) for analysis and debugging.
+
+### What's Logged
+
+**Evaluator Agent Logs** (`evaluator/evaluator.go`):
+- Question, answer, and evaluation result
+- Response (yes/no/unsure), reasoning, and score
+- Accessible via LogQL: `{job="evaluator"}`
+
+**Model Response Logs** (`llmclient/llmclient.go`):
+- Model name, prompts, temperature
+- Response content, token usage
+- Latency and TTFT (Time To First Token) metrics
+- Accessible via LogQL: `{job="llmclient"}`
+
+### Accessing Logs in Grafana
+
+1. Open Grafana URL (shown in console output after starting benchmarks)
+2. Navigate to **Explore** → Select **Loki** data source
+3. Use LogQL queries to filter and analyze logs
+
+**Common queries**:
+```logql
+{job="evaluator"}                              # All evaluator logs
+{job="llmclient"}                              # All model response logs
+{job="llmclient"} |= "llama3.2"               # Filter by model
+{job="evaluator"} | json | score < 0.5        # Low-scoring evaluations
+{job="llmclient"} | json | latency_ms > 5000  # Slow responses
+```
+
+See **[GRAFANA_LOGS.md](./GRAFANA_LOGS.md)** for complete documentation including:
+- 15+ example LogQL queries
+- Log attribute reference tables
+- Advanced filtering and correlation techniques
+- Troubleshooting guide
 
 ## Understanding the Metrics
 

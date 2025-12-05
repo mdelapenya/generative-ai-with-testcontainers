@@ -10,9 +10,12 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -28,6 +31,7 @@ const (
 type OtelSetup struct {
 	TracerProvider *trace.TracerProvider
 	MeterProvider  *metric.MeterProvider
+	LoggerProvider *log.LoggerProvider
 }
 
 // getCPUModel attempts to get the CPU model name for the current platform
@@ -122,14 +126,33 @@ func InitOTel(ctx context.Context, otlpEndpoint string) (*OtelSetup, error) {
 		metric.WithResource(res),
 	)
 
+	// Setup log exporter
+	logExporter, err := otlploghttp.New(ctx,
+		otlploghttp.WithEndpoint(otlpEndpoint),
+		otlploghttp.WithInsecure(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create log exporter: %w", err)
+	}
+
+	// Setup log provider with batch processor
+	loggerProvider := log.NewLoggerProvider(
+		log.WithProcessor(log.NewBatchProcessor(logExporter,
+			log.WithExportInterval(time.Second),
+		)),
+		log.WithResource(res),
+	)
+
 	// Set global providers
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetMeterProvider(meterProvider)
+	global.SetLoggerProvider(loggerProvider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	return &OtelSetup{
 		TracerProvider: tracerProvider,
 		MeterProvider:  meterProvider,
+		LoggerProvider: loggerProvider,
 	}, nil
 }
 
@@ -143,6 +166,10 @@ func (o *OtelSetup) Shutdown(ctx context.Context) error {
 
 	if err := o.MeterProvider.Shutdown(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("meter provider shutdown: %w", err))
+	}
+
+	if err := o.LoggerProvider.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("logger provider shutdown: %w", err))
 	}
 
 	if len(errs) > 0 {

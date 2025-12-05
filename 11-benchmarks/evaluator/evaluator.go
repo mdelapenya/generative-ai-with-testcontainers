@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/tmc/langchaingo/llms"
+	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
 )
 
 // EvaluationResult represents the structured response from the evaluator LLM
@@ -93,7 +95,30 @@ func (e *Agent) Evaluate(ctx context.Context, question string, answer string, re
 	// Convert response to score
 	result.Score = responseToScore(result.Response)
 
+	// Log the evaluation result
+	logger := global.GetLoggerProvider().Logger("evaluator")
+	var record log.Record
+	record.SetSeverity(log.SeverityInfo)
+	record.SetBody(log.StringValue("Evaluator response"))
+	record.AddAttributes(
+		log.String("question", truncateString(question, 100)),
+		log.String("answer", truncateString(answer, 200)),
+		log.String("provided_answer", result.ProvidedAnswer),
+		log.String("response", result.Response),
+		log.String("reason", result.Reason),
+		log.Float64("score", result.Score),
+	)
+	logger.Emit(ctx, record)
+
 	return &result, nil
+}
+
+// truncateString truncates a string to a maximum length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // extractJSON attempts to extract a JSON object from a string

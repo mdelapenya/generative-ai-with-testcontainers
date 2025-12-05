@@ -12,6 +12,8 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -194,7 +196,34 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 		attribute.Int64(semconv.AttrTTFTMs, ttft.Milliseconds()),
 	)
 
+	// Log the model response
+	logger := global.GetLoggerProvider().Logger("llmclient")
+	var record log.Record
+	record.SetSeverity(log.SeverityInfo)
+	record.SetBody(log.StringValue("Model response"))
+	record.AddAttributes(
+		log.String("model", c.model),
+		log.String("system_prompt", truncateString(systemPrompt, 100)),
+		log.String("user_prompt", truncateString(userPrompt, 200)),
+		log.Float64("temperature", temperature),
+		log.String("response_content", truncateString(responseContent, 500)),
+		log.Int("prompt_tokens", resp.PromptTokens),
+		log.Int("completion_tokens", resp.CompletionTokens),
+		log.Int("total_tokens", resp.TotalTokens),
+		log.Int64("latency_ms", latency.Milliseconds()),
+		log.Int64("ttft_ms", ttft.Milliseconds()),
+	)
+	logger.Emit(ctx, record)
+
 	return resp, nil
+}
+
+// truncateString truncates a string to a maximum length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // estimateTokens provides a rough estimate of token count based on character count.
