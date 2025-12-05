@@ -194,6 +194,39 @@ Filter results by:
 - Fix two dimensions, vary one to isolate effects
 - Variables affect all panels simultaneously
 
+## How to Read This Dashboard
+
+### Example 1: Latency Histogram with Exemplars
+
+![Latency Histogram with Exemplars](screenshots/latency-exemplars.png)
+
+**What you're seeing**:
+- **Histogram bars**: Distribution of response times across models/test cases
+- **Colored dots (exemplars)**: Individual requests that fell into each bucket
+
+**How to use it**:
+- Identify slow buckets (right side of histogram)
+- Look for patterns: Are certain models/temps consistently slower?
+- Filter by a specific model and test case using template variables to understand variance within that configuration
+
+### Example 2: Tokens/sec vs GPU Utilization
+
+![Tokens per Second vs GPU Utilization](screenshots/tokens-gpu.png)
+
+**What you're seeing**:
+- **Top panel**: Token generation throughput (tokens/sec) per model
+- **Bottom panel**: GPU utilization percentage during benchmark
+
+**How to interpret**:
+- **High tokens/sec + High GPU util**: Model is efficiently using GPU (good!)
+- **Low tokens/sec + High GPU util**: Model is GPU-bound but slow (bottleneck)
+- **High tokens/sec + Low GPU util**: Model is efficient, GPU has headroom for more models
+- **Low tokens/sec + Low GPU util**: Model is likely CPU-bound or has other bottlenecks
+
+**Use case**: Determine if you can run multiple models on the same GPU by checking utilization headroom.
+
+**Note**: GPU metrics require running on host (not in containers). See "GPU Metrics" section for details.
+
 ## Model Selection Guide
 
 **Goal**: Find the smallest model that meets your requirements.
