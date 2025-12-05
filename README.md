@@ -14,6 +14,7 @@ This project demonstrates how to use [Testcontainers for Golang](https://github.
 1. [`08-testing`](./08-testing): Contains an example with the evolution of testing our Generative AI applications, from an old school approach to a more modern one using Evaluator Agents.
 1. [`09-huggingface`](./09-huggingface): Contains an example of using a HuggingFace model with Docker Model Runner.
 1. [`10-functions`](./10-functions): Contains an example of using functions in a language model.
+1. [`11-LLM-benchmarks`](./11-benchmarks): Contains a benchmarks framework to determine which LLM is the most suitable for given tasks. No opinions, just data.
 
 ## Prerequisites
 
