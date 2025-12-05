@@ -233,7 +233,7 @@ func BenchmarkLLMs(b *testing.B) {
 
 // runSingleBenchmark executes a single benchmark iteration
 func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model string, tc TestCase, temp float64) BenchmarkResult {
-	resp, err := client.GenerateWithTemp(ctx, tc.SystemPrompt, tc.UserPrompt, temp)
+	resp, err := client.GenerateWithTemp(ctx, tc.Name, tc.SystemPrompt, tc.UserPrompt, temp)
 
 	result := BenchmarkResult{
 		Model:    model,
@@ -282,7 +282,7 @@ func evaluateResponse(ctx context.Context, testCaseName string, question string,
 	agent := evaluator.NewAgent(evaluatorAgent, evalCriteria.SystemPrompt)
 
 	// Evaluate the response
-	return agent.Evaluate(ctx, question, answer, evalCriteria.Reference)
+	return agent.Evaluate(ctx, testCaseName, question, answer, evalCriteria.Reference)
 }
 
 // reportAggregateMetrics calculates and reports aggregate metrics

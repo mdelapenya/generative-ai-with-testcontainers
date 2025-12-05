@@ -22,7 +22,7 @@ type EvaluationResult struct {
 
 // Evaluator defines the interface for evaluating LLM responses
 type Evaluator interface {
-	Evaluate(ctx context.Context, question string, answer string, reference string) (*EvaluationResult, error)
+	Evaluate(ctx context.Context, testCase string, question string, answer string, reference string) (*EvaluationResult, error)
 }
 
 // Agent implements the Evaluator interface using an LLM as a judge
@@ -47,7 +47,7 @@ JSON response:`
 }
 
 // Evaluate assesses the quality of an answer against a reference using the LLM judge
-func (e *Agent) Evaluate(ctx context.Context, question string, answer string, reference string) (*EvaluationResult, error) {
+func (e *Agent) Evaluate(ctx context.Context, testCase string, question string, answer string, reference string) (*EvaluationResult, error) {
 	// Construct the user message with the question, answer, and reference
 	userMessage := fmt.Sprintf(e.userTemplate, question, answer, reference)
 
@@ -101,6 +101,7 @@ func (e *Agent) Evaluate(ctx context.Context, question string, answer string, re
 	record.SetSeverity(log.SeverityInfo)
 	record.SetBody(log.StringValue("Evaluator response"))
 	record.AddAttributes(
+		log.String("test_case", testCase),
 		log.String("question", truncateString(question, 100)),
 		log.String("answer", truncateString(answer, 200)),
 		log.String("provided_answer", result.ProvidedAnswer),

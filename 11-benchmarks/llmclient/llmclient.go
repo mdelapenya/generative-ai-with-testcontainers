@@ -68,18 +68,23 @@ func NewClient(endpoint, model string) (*Client, error) {
 
 // Generate sends a prompt to the LLM and returns the response with metadata
 func (c *Client) Generate(ctx context.Context, systemPrompt, userPrompt string) (*Response, error) {
-	return c.GenerateWithTemp(ctx, systemPrompt, userPrompt, 0.7)
+	return c.GenerateWithTemp(ctx, "", systemPrompt, userPrompt, 0.7)
 }
 
 // GenerateWithTemp sends a prompt to the LLM with a specific temperature and returns the response with metadata
-func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt string, temperature float64) (*Response, error) {
+func (c *Client) GenerateWithTemp(ctx context.Context, testCase string, systemPrompt, userPrompt string, temperature float64) (*Response, error) {
+	spanAttrs := []attribute.KeyValue{
+		attribute.String(semconv.AttrModel, c.model),
+		attribute.String(semconv.AttrSystemPrompt, systemPrompt),
+		attribute.String(semconv.AttrUserPrompt, userPrompt),
+		attribute.Float64(semconv.AttrTemperature, temperature),
+	}
+	if testCase != "" {
+		spanAttrs = append(spanAttrs, attribute.String(semconv.AttrCase, testCase))
+	}
+
 	ctx, span := c.tracer.Start(ctx, "llm.generate",
-		trace.WithAttributes(
-			attribute.String(semconv.AttrModel, c.model),
-			attribute.String(semconv.AttrSystemPrompt, systemPrompt),
-			attribute.String(semconv.AttrUserPrompt, userPrompt),
-			attribute.Float64(semconv.AttrTemperature, temperature),
-		),
+		trace.WithAttributes(spanAttrs...),
 	)
 	defer span.End()
 
@@ -201,7 +206,8 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 	var record log.Record
 	record.SetSeverity(log.SeverityInfo)
 	record.SetBody(log.StringValue("Model response"))
-	record.AddAttributes(
+
+	logAttrs := []log.KeyValue{
 		log.String("model", c.model),
 		log.String("system_prompt", truncateString(systemPrompt, 100)),
 		log.String("user_prompt", truncateString(userPrompt, 200)),
@@ -212,7 +218,12 @@ func (c *Client) GenerateWithTemp(ctx context.Context, systemPrompt, userPrompt 
 		log.Int("total_tokens", resp.TotalTokens),
 		log.Int64("latency_ms", latency.Milliseconds()),
 		log.Int64("ttft_ms", ttft.Milliseconds()),
-	)
+	}
+	if testCase != "" {
+		logAttrs = append(logAttrs, log.String("test_case", testCase))
+	}
+
+	record.AddAttributes(logAttrs...)
 	logger.Emit(ctx, record)
 
 	return resp, nil

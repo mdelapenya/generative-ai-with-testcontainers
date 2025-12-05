@@ -174,15 +174,15 @@ All evaluator responses and model outputs are automatically logged to the Grafan
 ### What's Logged
 
 **Evaluator Agent Logs** (`evaluator/evaluator.go`):
-- Question, answer, and evaluation result
+- Test case name, question, answer, and evaluation result
 - Response (yes/no/unsure), reasoning, and score
-- Accessible via LogQL: `{job="evaluator"}`
+- Accessible via LogQL: `{service_name="llm-benchmark", instrumentation_scope_name="evaluator"}`
 
 **Model Response Logs** (`llmclient/llmclient.go`):
-- Model name, prompts, temperature
+- Test case name, model name, prompts, temperature
 - Response content, token usage
 - Latency and TTFT (Time To First Token) metrics
-- Accessible via LogQL: `{job="llmclient"}`
+- Accessible via LogQL: `{service_name="llm-benchmark", instrumentation_scope_name="llmclient"}`
 
 ### Accessing Logs in Grafana
 
@@ -192,12 +192,26 @@ All evaluator responses and model outputs are automatically logged to the Grafan
 
 **Common queries**:
 ```logql
-{job="evaluator"}                              # All evaluator logs
-{job="llmclient"}                              # All model response logs
-{job="llmclient"} |= "llama3.2"               # Filter by model
-{job="evaluator"} | json | score < 0.5        # Low-scoring evaluations
-{job="llmclient"} | json | latency_ms > 5000  # Slow responses
+# All evaluator logs
+{service_name="llm-benchmark", instrumentation_scope_name="evaluator"}
+
+# All model response logs
+{service_name="llm-benchmark", instrumentation_scope_name="llmclient"}
+
+# Filter by model name
+{service_name="llm-benchmark", instrumentation_scope_name="llmclient"} |= "llama3.2"
+
+# Filter by test case
+{service_name="llm-benchmark"} |= "mathematical-operations"
+
+# Low-scoring evaluations
+{service_name="llm-benchmark", instrumentation_scope_name="evaluator"} |= `"score":0`
+
+# View latency data
+{service_name="llm-benchmark", instrumentation_scope_name="llmclient"} |= "latency_ms"
 ```
+
+**Note**: Logs use OpenTelemetry Protocol (OTLP). The `service_name` is `"llm-benchmark"` and logger names are `"evaluator"` or `"llmclient"` (mapped to `instrumentation_scope_name` in Loki). Click on log lines in Grafana to view all attributes (model, tokens, scores, etc.).
 
 See **[GRAFANA_LOGS.md](./GRAFANA_LOGS.md)** for complete documentation including:
 - 15+ example LogQL queries
