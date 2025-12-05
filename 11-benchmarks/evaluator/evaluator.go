@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/tmc/langchaingo/llms"
 	"go.opentelemetry.io/otel/log"
@@ -101,12 +102,12 @@ func (e *Agent) Evaluate(ctx context.Context, testCase string, question string, 
 	record.SetSeverity(log.SeverityInfo)
 	record.SetBody(log.StringValue("Evaluator response"))
 	record.AddAttributes(
-		log.String("test_case", testCase),
+		log.String("test_case", sanitizeUTF8(testCase)),
 		log.String("question", truncateString(question, 100)),
 		log.String("answer", truncateString(answer, 200)),
-		log.String("provided_answer", result.ProvidedAnswer),
-		log.String("response", result.Response),
-		log.String("reason", result.Reason),
+		log.String("provided_answer", sanitizeUTF8(truncateString(result.ProvidedAnswer, 200))),
+		log.String("response", sanitizeUTF8(result.Response)),
+		log.String("reason", sanitizeUTF8(truncateString(result.Reason, 500))),
 		log.Float64("score", result.Score),
 	)
 	logger.Emit(ctx, record)
@@ -114,12 +115,24 @@ func (e *Agent) Evaluate(ctx context.Context, testCase string, question string, 
 	return &result, nil
 }
 
-// truncateString truncates a string to a maximum length
+// truncateString truncates a string to a maximum length and ensures valid UTF-8
 func truncateString(s string, maxLen int) string {
+	// First, sanitize to valid UTF-8
+	s = sanitizeUTF8(s)
+
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// sanitizeUTF8 replaces invalid UTF-8 sequences with the replacement character
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	// Replace invalid UTF-8 with valid replacement characters
+	return strings.ToValidUTF8(s, "�")
 }
 
 // extractJSON attempts to extract a JSON object from a string

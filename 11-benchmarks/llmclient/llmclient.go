@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
 	"github.com/tmc/langchaingo/llms"
@@ -203,7 +204,7 @@ func (c *Client) GenerateWithTemp(ctx context.Context, testCase string, systemPr
 	record.SetBody(log.StringValue("Model response"))
 
 	logAttrs := []log.KeyValue{
-		log.String("model", c.model),
+		log.String("model", sanitizeUTF8(c.model)),
 		log.String("system_prompt", truncateString(systemPrompt, 100)),
 		log.String("user_prompt", truncateString(userPrompt, 200)),
 		log.Float64("temperature", temperature),
@@ -215,7 +216,7 @@ func (c *Client) GenerateWithTemp(ctx context.Context, testCase string, systemPr
 		log.Int64("ttft_ms", ttft.Milliseconds()),
 	}
 	if testCase != "" {
-		logAttrs = append(logAttrs, log.String("test_case", testCase))
+		logAttrs = append(logAttrs, log.String("test_case", sanitizeUTF8(testCase)))
 	}
 
 	record.AddAttributes(logAttrs...)
@@ -224,12 +225,24 @@ func (c *Client) GenerateWithTemp(ctx context.Context, testCase string, systemPr
 	return resp, nil
 }
 
-// truncateString truncates a string to a maximum length
+// truncateString truncates a string to a maximum length and ensures valid UTF-8
 func truncateString(s string, maxLen int) string {
+	// First, sanitize to valid UTF-8
+	s = sanitizeUTF8(s)
+
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// sanitizeUTF8 replaces invalid UTF-8 sequences with the replacement character
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	// Replace invalid UTF-8 with valid replacement characters
+	return strings.ToValidUTF8(s, "�")
 }
 
 // estimateTokens provides a rough estimate of token count based on character count.
