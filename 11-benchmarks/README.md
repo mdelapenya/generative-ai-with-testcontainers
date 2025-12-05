@@ -74,27 +74,44 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 
 ## Running the Example
 
-**Basic usage (local models only)**:
+### Apple Silicon (M1/M2/M3/M4) - Recommended
+
+**With GPU metrics** (requires sudo for utilization tracking):
 ```sh
-go test -bench=. -benchtime=5x -timeout=30m
+sudo go test -bench=. -benchtime=5x -timeout=30m
 ```
 
 **With OpenAI GPT-5.1** (optional):
 ```sh
 export OPENAI_API_KEY="your-api-key-here"
+sudo go test -bench=. -benchtime=5x -timeout=30m
+```
+
+**Why sudo?** Apple Silicon requires `powermetrics` for GPU utilization metrics. Without sudo, you'll only see GPU memory (not utilization). The benchmark works fine without sudo, but you'll get more complete GPU metrics with it.
+
+### Other Platforms (Linux/Windows with NVIDIA)
+
+**Basic usage**:
+```sh
 go test -bench=. -benchtime=5x -timeout=30m
 ```
-This adds 25 OpenAI scenarios (runs first) for direct comparison. Without the key, only 4 local models run (100 scenarios).
+
+**With OpenAI**:
+```sh
+export OPENAI_API_KEY="your-api-key-here"
+go test -bench=. -benchtime=5x -timeout=30m
+```
+
+### What to Expect
+
+- 5 iterations per benchmark, up to 30 min timeout (model downloads take time)
+- **100 scenarios** (4 local models × 5 test cases × 5 temperatures)
+- **125 scenarios** with OpenAI API key (adds GPT-5.1)
+- Containers kept running after completion for dashboard exploration
 
 The benchmark disables [Ryuk garbage collector](https://golang.testcontainers.org/features/garbage_collector/#ryuk) to keep containers running after completion for dashboard exploration.
 
-**What happens**:
-- 5 iterations per benchmark, up to 30 min timeout (model downloads take time)
-- Metrics/traces sent to Grafana LGTM stack
-- Dashboard created automatically and updated in real-time
-- Containers kept running after completion
-
-**Console output**:
+**Console output** showing metrics:
 
 ```shell
 BenchmarkLLMs/Pull/llama3.2-8                                  1         ...
@@ -119,18 +136,20 @@ Dashboard will be created after benchmarks run
 
 Open in browser (`admin`/`admin`) to view real-time metrics, latency distributions, traces, and model comparisons.
 
-### GPU Metrics (Optional)
+### GPU Metrics
 
 **Supported GPUs**:
 - **NVIDIA**: Auto-detected via `nvidia-smi` (utilization % and memory MB)
-- **Apple Silicon (M1/M2/M3/M4)**: Auto-detected via `ioreg` (no sudo required)
-  - Memory: Reliable from IOAccelerator properties
-  - Utilization: Limited without sudo (use `sudo go test ...` for precise metrics via `powermetrics`)
-- **No GPU**: Gracefully continues with zero values
+- **Apple Silicon (M1/M2/M3/M4)**: Auto-detected via `powermetrics` and `ioreg`
+  - **GPU Memory**: Tracks allocation via `ioreg` (works without sudo)
+  - **GPU Utilization**: Tracks active residency via `powermetrics` (requires sudo)
+  - **Recommended**: Run with `sudo go test ...` for complete metrics
 
 **Container Limitation**: GPU detection fails in containerized environments (Docker, Claude Code CLI) because containers can't access host GPU tools. **Run directly on host** for GPU metrics.
 
-If unavailable, benchmark continues normally with GPU panels showing zero.
+**What you'll see on Apple Silicon**:
+- **With sudo**: Both GPU memory spikes and utilization % during model inference
+- **Without sudo**: Only GPU memory (utilization will show 0%)
 
 ## Understanding the Metrics
 
@@ -215,17 +234,19 @@ Filter results by:
 
 **What you're seeing**:
 - **Top panel**: Token generation throughput (tokens/sec) per model
-- **Bottom panel**: GPU utilization percentage during benchmark
+- **Bottom panel**: GPU utilization percentage during benchmark (requires sudo on Apple Silicon)
 
 **How to interpret**:
-- **High tokens/sec + High GPU util**: Model is efficiently using GPU (good!)
-- **Low tokens/sec + High GPU util**: Model is GPU-bound but slow (bottleneck)
-- **High tokens/sec + Low GPU util**: Model is efficient, GPU has headroom for more models
-- **Low tokens/sec + Low GPU util**: Model is likely CPU-bound or has other bottlenecks
+- **High tokens/sec + High GPU util**: Model efficiently using GPU (ideal)
+- **Low tokens/sec + High GPU util**: GPU-bound bottleneck (model is slow despite GPU usage)
+- **High tokens/sec + Low GPU util**: Efficient model with GPU headroom (can run more models)
+- **Low tokens/sec + Low GPU util**: Likely CPU-bound or other bottlenecks
 
-**Use case**: Determine if you can run multiple models on the same GPU by checking utilization headroom.
+**Use case**:
+- Determine if you can run multiple models on the same GPU by checking utilization headroom
+- Identify GPU vs CPU bottlenecks
 
-**Note**: GPU metrics require running on host (not in containers). See "GPU Metrics" section for details.
+**Note**: Run with `sudo` on Apple Silicon for utilization metrics (see "Running the Example" section).
 
 ## Model Selection Guide
 

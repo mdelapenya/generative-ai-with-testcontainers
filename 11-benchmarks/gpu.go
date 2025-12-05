@@ -147,51 +147,45 @@ func (s *AppleGPUSampler) Sample() (*GPUMetrics, error) {
 }
 
 func (s *AppleGPUSampler) getGPUUtilization() float64 {
-	// Get GPU activity from ioreg PerformanceStatistics
-	// Apple Silicon GPUs expose utilization metrics through ioreg
-	cmd := exec.Command("ioreg", "-r", "-c", "IOAccelerator", "-d", "2")
+	// Use powermetrics to get GPU utilization
+	// This requires sudo but provides accurate GPU utilization metrics
+	// powermetrics -n 1 -i 1000 --samplers gpu_power
+	cmd := exec.Command("powermetrics",
+		"-n", "1",           // 1 sample
+		"-i", "100",         // 100ms sample interval (faster response)
+		"--samplers", "gpu_power", // Only sample GPU power metrics
+	)
 
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 
 	if err := cmd.Run(); err != nil {
+		// powermetrics requires sudo, fall back to zero if not available
 		return 0
 	}
 
 	output := stdout.String()
 
-	// Look for "Device Utilization %" in PerformanceStatistics
-	// Format: "Device Utilization %"=<number> (note: no space after =)
-	// Try multiple utilization metrics in order of preference
-
-	// Method 1: Device Utilization (overall GPU usage)
-	deviceUtil := s.extractMetric(output, `"Device Utilization %"\s*=\s*(\d+(?:\.\d+)?)`)
-	if deviceUtil > 0 {
-		return deviceUtil
+	// Parse GPU utilization from powermetrics output
+	// Format: "GPU HW active residency:  12.34%"
+	// This represents the percentage of time the GPU was actively processing
+	gpuActive := s.extractMetric(output, `GPU HW active residency:\s+(\d+(?:\.\d+)?)%`)
+	if gpuActive > 0 {
+		return gpuActive
 	}
 
-	// Method 2: Renderer Utilization (rendering workload)
-	rendererUtil := s.extractMetric(output, `"Renderer Utilization %"\s*=\s*(\d+(?:\.\d+)?)`)
-	if rendererUtil > 0 {
-		return rendererUtil
+	// Alternative format: "GPU active residency:"
+	gpuActiveAlt := s.extractMetric(output, `GPU active residency:\s+(\d+(?:\.\d+)?)%`)
+	if gpuActiveAlt > 0 {
+		return gpuActiveAlt
 	}
 
-	// Method 3: Tiler Utilization (geometry processing)
-	tilerUtil := s.extractMetric(output, `"Tiler Utilization %"\s*=\s*(\d+(?:\.\d+)?)`)
-	if tilerUtil > 0 {
-		return tilerUtil
+	// Try to extract average GPU usage if available
+	avgGPU := s.extractMetric(output, `GPU:\s+(\d+(?:\.\d+)?)%`)
+	if avgGPU > 0 {
+		return avgGPU
 	}
 
-	// Method 4: Try to calculate from active/idle ticks if available
-	activeTicks := s.extractMetric(output, `"GPU Active Ticks"\s*=\s*(\d+)`)
-	idleTicks := s.extractMetric(output, `"GPU Idle Ticks"\s*=\s*(\d+)`)
-
-	if activeTicks > 0 && (activeTicks+idleTicks) > 0 {
-		totalTicks := activeTicks + idleTicks
-		return (activeTicks / totalTicks) * 100.0
-	}
-
-	// No utilization metrics available (GPU likely idle or metrics not exposed)
 	return 0
 }
 
