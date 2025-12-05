@@ -66,11 +66,6 @@ func NewClient(endpoint, model string) (*Client, error) {
 	}, nil
 }
 
-// Generate sends a prompt to the LLM and returns the response with metadata
-func (c *Client) Generate(ctx context.Context, systemPrompt, userPrompt string) (*Response, error) {
-	return c.GenerateWithTemp(ctx, "", systemPrompt, userPrompt, 0.7)
-}
-
 // GenerateWithTemp sends a prompt to the LLM with a specific temperature and returns the response with metadata
 func (c *Client) GenerateWithTemp(ctx context.Context, testCase string, systemPrompt, userPrompt string, temperature float64) (*Response, error) {
 	spanAttrs := []attribute.KeyValue{
