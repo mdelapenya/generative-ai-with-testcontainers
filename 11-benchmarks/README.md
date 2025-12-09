@@ -58,7 +58,7 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 
 - `metrics.go`: Defines histograms (latency, prompt eval time with exemplars) and gauges (p50/p95, success rate, tokens/sec, GPU metrics).
 
-- `gpu.go`: Samples GPU metrics with auto-detection for NVIDIA (`nvidia-smi`) and Apple Silicon (`ioreg`). See "GPU Metrics" section below for details.
+- `gpu.go`: Samples GPU metrics with auto-detection for NVIDIA (`nvidia-smi`) and Apple Silicon (`ioreg`). See [GPU Metrics](#gpu-metrics) section below for details.
 
 - `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 10 panels:
   1. **Latency Percentiles (p50/p95)** - Overall response time metrics
@@ -86,7 +86,7 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 - More consistent and reliable evaluation scores
 - Cost-effective for evaluation workloads
 
-See [EVALUATOR.md](./EVALUATOR.md) for complete details on evaluator model selection.
+See the [Evaluator Agent Deep Dive](#evaluator-agent-deep-dive) section below for complete details on evaluator model selection.
 
 ### Apple Silicon (M1/M2/M3/M4) - Recommended
 
@@ -211,17 +211,86 @@ All evaluator responses and model outputs are automatically logged to the Grafan
 {service_name="llm-benchmark", instrumentation_scope_name="llmclient"} |= "latency_ms"
 ```
 
-**Note**: Logs use OpenTelemetry Protocol (OTLP). The `service_name` is `"llm-benchmark"` and logger names are `"evaluator"` or `"llmclient"` (mapped to `instrumentation_scope_name` in Loki). Click on log lines in Grafana to view all attributes (model, tokens, scores, etc.).
+**Note**: Logs use OpenTelemetry Protocol (OTLP). In the LGTM stack, only `service_name` is indexed as a Loki label. To filter by scope (evaluator/llmclient) or other attributes, use parsed field filters:
 
-See **[GRAFANA_LOGS.md](./GRAFANA_LOGS.md)** for complete documentation including:
-- 15+ example LogQL queries
-- Log attribute reference tables
-- Advanced filtering and correlation techniques
-- Troubleshooting guide
+```logql
+# Filter by evaluator scope
+{service_name="llm-benchmark"} | scope_name=`evaluator`
+
+# Filter by test case
+{service_name="llm-benchmark"} | scope_name=`evaluator` | test_case=`mathematical-operations`
+```
+
+Click on log lines in Grafana to view all attributes (model, tokens, scores, etc.), then click on attribute values to add them as filters.
+
+### Panel-to-Logs Drill-Down
+
+The **Evaluator Score** and **Evaluator Pass Rate** panels include data links that let you click on any data point to view the individual evaluation logs that contributed to that aggregated metric:
+
+- Click on a data point in the panel
+- Select "View Individual Evaluations" from the context menu
+- Grafana Explore opens with logs filtered to that test case in a ±30-second window around the clicked point
+
+**Important**: Each metric data point shows an **average score** across multiple benchmark iterations. When you drill down, you'll see multiple log entries (one per iteration) with individual scores (0.0, 0.5, or 1.0) and detailed reasoning from the evaluator LLM.
+
+### Advanced Log Queries
+
+**Filter by score range**:
+```logql
+# Perfect scores
+{service_name="llm-benchmark"} | scope_name=`evaluator` |= `"score":1`
+
+# Failed evaluations
+{service_name="llm-benchmark"} | scope_name=`evaluator` |= `"score":0`
+```
+
+**Filter by response type**:
+```logql
+# Only "yes" evaluations
+{service_name="llm-benchmark"} | scope_name=`evaluator` |= `"response":"yes"`
+
+# "no" or "unsure"
+{service_name="llm-benchmark"} | scope_name=`evaluator` |~ `"response":"(no|unsure)"`
+```
+
+**Find slow model responses**:
+```logql
+{service_name="llm-benchmark"} | scope_name=`llmclient` |= "latency_ms"
+```
+
+### Log Attributes Reference
+
+**Evaluator Logs** (`scope_name="evaluator"`):
+- `test_case`: Test case name
+- `question`: The question (truncated to 100 chars)
+- `answer`: The answer being evaluated (truncated to 200 chars)
+- `provided_answer`: Evaluator's summary
+- `response`: "yes", "no", or "unsure"
+- `reason`: Evaluation explanation
+- `score`: 0.0 (no), 0.5 (unsure), or 1.0 (yes)
+
+**Model Response Logs** (`scope_name="llmclient"`):
+- `test_case`: Test case name
+- `model`: Model name/identifier
+- `system_prompt`: System instruction (truncated to 100 chars)
+- `user_prompt`: User input (truncated to 200 chars)
+- `temperature`: Temperature parameter
+- `response_content`: Model's output (truncated to 500 chars)
+- `prompt_tokens`, `completion_tokens`, `total_tokens`: Token counts
+- `latency_ms`: Total response time
+- `ttft_ms`: Time To First Token
+
+### Log Correlation
+
+**Trace Correlation**: Each log contains a `trace_id`. Click on it to view the full request trace in Tempo.
+
+**Metric Correlation**: Use the dashboard's time picker to align metrics with log queries and identify patterns.
 
 ## Understanding the Metrics
 
-The benchmark collects and reports several key metrics to help you evaluate model performance:
+The benchmark collects and reports several key metrics to help you evaluate model performance.
+
+For log-based analysis of individual evaluations and model responses, see [Logs and Observability](#logs-and-observability).
 
 ### Console Metrics
 
@@ -262,14 +331,16 @@ The dashboard **"LLM Bench (DMR + Testcontainers)"** includes 10 panels with tem
 #### 8-9. GPU Utilization & Memory (Optional)
 - **Utilization**: 0-100% usage (near 100% = may need more GPUs)
 - **Memory**: MB consumed (check model fits your GPU)
-- Requires host execution (not containers); see "GPU Metrics" section above
+- Requires host execution (not containers); see [GPU Metrics](#gpu-metrics) section
 
 #### 10. Evaluator Score & Pass Rate
 - **Evaluator Score**: Average quality rating (0.0-1.0) from the LLM evaluator agent
 - **Pass Rate**: Percentage of responses marked as "yes" by the evaluator
-- Based on test-case-specific evaluation criteria (see [EVALUATOR.md](./EVALUATOR.md))
+- Based on test-case-specific evaluation criteria (see [Evaluator Agent Deep Dive](#evaluator-agent-deep-dive))
 - Customize by editing system prompts in `evaluator/testdata/evaluation/`
 - Balance quality scores with speed and success rate
+
+For a complete guide on interpreting these panels, see [How to Read This Dashboard](#how-to-read-this-dashboard).
 
 ### Dashboard Template Variables
 
@@ -316,11 +387,13 @@ Filter results by:
 - Determine if you can run multiple models on the same GPU by checking utilization headroom
 - Identify GPU vs CPU bottlenecks
 
-**Note**: Run with `sudo` on Apple Silicon for utilization metrics (see "Running the Example" section).
+**Note**: Run with `sudo` on Apple Silicon for utilization metrics (see [Running the Example](#running-the-example) section).
 
 ## Model Selection Guide
 
 **Goal**: Find the smallest model that meets your requirements.
+
+Use the [Grafana Dashboard Panels](#grafana-dashboard-panels) to compare models across different metrics.
 
 ### Selection Process
 
@@ -356,14 +429,157 @@ Edit `bench_llm_test.go` to customize:
 - **Temperatures**: Edit `temperatures` slice (line ~76)
 - **Test Cases**: Edit `testCases` slice (line ~47)
 
+For quality evaluation customization, see [Customizing Quality Evaluation](#customizing-quality-evaluation).
+
 ### Customizing Quality Evaluation
 
-The benchmark uses an **Evaluator Agent pattern** (LLM-as-evaluator) for quality scoring. See [EVALUATOR.md](./EVALUATOR.md) for complete details.
+The benchmark uses an **Evaluator Agent pattern** (LLM-as-evaluator) for quality scoring. See [Evaluator Agent Deep Dive](#evaluator-agent-deep-dive) for complete details.
 
 To customize evaluation:
 
 1. **Edit existing evaluation criteria**: Modify system prompts in `evaluator/testdata/evaluation/{test-case}/system_prompt.txt`
-2. **Add new test cases**: Create new folders with `system_prompt.txt` and `reference.txt` files
+2. **Add new test cases**: Create new folders with `system_prompt.txt` and `reference.txt` files (see [Adding Custom Test Cases](#adding-custom-test-cases))
 3. **Use different evaluator models**: Set `OPENAI_API_KEY` for GPT-4o-mini (recommended) or modify `bench_main_test.go` to use other models
 
 **Important**: Keep system prompts compact to avoid JSON truncation issues. Always instruct the evaluator to summarize, not copy full answers or code.
+
+## Evaluator Agent Deep Dive
+
+### Overview
+
+The evaluator agent acts as an LLM judge, providing objective assessment of response quality based on specific criteria for each test case. This offers:
+
+- **Automated Quality Assessment**: No manual review needed
+- **Consistency**: Same criteria applied across all models
+- **Detailed Feedback**: Understand why responses succeed or fail
+- **Scoring**: Quantitative metrics (0.0-1.0) for comparison
+
+### ⚠️ Evaluator Model Recommendation
+
+**We strongly recommend using a high-quality LLM for the evaluator agent**, such as OpenAI's GPT-4o-mini, rather than smaller local models.
+
+**Why Use a High-Quality Evaluator?**
+
+The evaluator's job is to assess the correctness and quality of responses from the models being benchmarked (which may include small language models or SLMs). Using a high-quality evaluator ensures:
+
+1. **Accurate Assessments**: High-quality models like GPT-4 have better reasoning capabilities
+2. **Consistent JSON Generation**: Premium models are better at following structured output requirements
+3. **Nuanced Evaluation**: Better understanding of edge cases and partial correctness
+4. **Reduced False Positives/Negatives**: More accurate distinction between correct, incorrect, and ambiguous responses
+5. **Reliable SLM Benchmarking**: When benchmarking small/local models, you want confidence that evaluation accuracy isn't a bottleneck
+
+**Cost Consideration**: GPT-4o-mini is cost-effective for evaluation (much cheaper than GPT-4) while maintaining high accuracy. The added API cost is typically negligible compared to the value of accurate evaluation data.
+
+**Local Evaluator Limitations**: While the system falls back to local models (e.g., `ai/llama3.2:3B-Q4_K_M`) when no API key is available, be aware that:
+- Local SLMs may struggle with strict JSON formatting requirements
+- Evaluation accuracy may be lower, especially for nuanced test cases
+- You may see more evaluation errors or inconsistent scoring
+- This can undermine the reliability of your benchmark results
+
+### How It Works
+
+The evaluator uses **langchaingo** to create an LLM-powered judge that:
+- Receives the original question, the model's answer, and reference criteria
+- Applies test-case-specific evaluation prompts (embedded at compile time via `go:embed`)
+- Returns structured JSON with:
+  - `response`: "yes" (correct), "no" (incorrect), or "unsure" (ambiguous)
+  - `reason`: Explanation of the evaluation
+  - `score`: Numeric score (1.0 for yes, 0.0 for no, 0.5 for unsure)
+
+### Evaluation Criteria by Test Case
+
+**Code Explanation**:
+- Identifies Fibonacci implementation
+- Explains recursive approach
+- Mentions base cases
+- Clarity and accuracy
+
+**Mathematical Operations**:
+- Correct result (5050 for sum 1-100)
+- Proper calculation method
+- Understanding of arithmetic series
+
+**Creative Writing**:
+- Contains Fibonacci-related joke
+- Demonstrates humor/wit
+- Coherent and complete
+- References Fibonacci concepts
+
+**Factual Question**:
+- Mentions Toledo School of Translators
+- References Arabic/Greek → Latin translations
+- Notes 12th-13th century timeframe
+- Explains cultural significance
+
+**Code Generation**:
+- Valid Go code
+- Implements Fibonacci with recursion
+- Correct base cases
+- Proper recursive calls
+
+### Adding Custom Test Cases
+
+1. Create folder: `testdata/evaluation/{test-case-name}/`
+2. Add `system_prompt.txt`:
+```
+You are an expert evaluator...
+
+IMPORTANT: Respond ONLY with valid, compact JSON. Keep all fields concise (max 2-3 sentences each).
+
+Required JSON format:
+{
+  "provided_answer": "brief summary of the answer (NOT the full text)",
+  "response": "yes/no/unsure",
+  "reason": "1-2 sentence explanation of your evaluation"
+}
+
+Evaluation criteria:
+- Point 1
+- Point 2
+
+Response must be:
+- "yes" if the answer meets criteria
+- "no" if the answer fails criteria
+- "unsure" if the answer is ambiguous
+
+CRITICAL: Keep the JSON compact. Summarize answers briefly. Do NOT copy full text or code.
+```
+
+3. Add `reference.txt`: Expected correct answer or behavior description
+
+4. Update `evaluator/evaluator.go`:
+```go
+//go:embed testdata/evaluation/your-test-case/system_prompt.txt
+var yourTestCaseSystemPrompt string
+
+//go:embed testdata/evaluation/your-test-case/reference.txt
+var yourTestCaseReference string
+```
+
+5. Add to `GetCriteria()` in `evaluator/evaluator.go`:
+```go
+"your-test-case": {
+    TestCaseName: "your-test-case",
+    SystemPrompt: strings.TrimSpace(yourTestCaseSystemPrompt),
+    Reference:    strings.TrimSpace(yourTestCaseReference),
+},
+```
+
+### Evaluator Metrics
+
+The evaluator adds these metrics to benchmark output:
+
+- `eval_score`: Average evaluation score (0.0-1.0) across all iterations
+- Individual result fields:
+  - `EvalScore`: Numeric score for the response
+  - `EvalResponse`: "yes", "no", or "unsure"
+  - `EvalReason`: Detailed explanation
+
+### Best Practices
+
+1. **Use a high-quality evaluator model** (OpenAI GPT-4o-mini or GPT-4) for accurate evaluations - critical for reliable SLM benchmarking
+2. Run multiple iterations (benchtime=5x or more) for statistical significance
+3. Review `EvalReason` field to understand failure patterns and improve test criteria
+4. Adjust evaluation criteria based on your specific requirements
+5. Consider evaluator latency in overall benchmark time (evaluation adds overhead)
+6. Monitor evaluation error rates - high error rates may indicate evaluator model issues
