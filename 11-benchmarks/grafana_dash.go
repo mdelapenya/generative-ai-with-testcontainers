@@ -84,6 +84,11 @@ func createHistogramPanel(id int, title string, bucketMetric string, x, y int, u
 
 // createSimpleTimeseriesPanel creates a basic timeseries panel with a single metric
 func createSimpleTimeseriesPanel(id int, title string, metric string, x, y, w, h int, unit string, minMax map[string]interface{}) map[string]interface{} {
+	return createSimpleTimeseriesPanelWithLinks(id, title, metric, x, y, w, h, unit, minMax, nil)
+}
+
+// createSimpleTimeseriesPanelWithLinks creates a basic timeseries panel with a single metric and optional data links
+func createSimpleTimeseriesPanelWithLinks(id int, title string, metric string, x, y, w, h int, unit string, minMax map[string]interface{}, dataLinks []map[string]interface{}) map[string]interface{} {
 	panel := map[string]interface{}{
 		"id":      id,
 		"type":    "timeseries",
@@ -114,6 +119,12 @@ func createSimpleTimeseriesPanel(id int, title string, metric string, x, y, w, h
 		for k, v := range minMax {
 			defaults[k] = v
 		}
+	}
+
+	// Add data links if provided
+	if len(dataLinks) > 0 {
+		defaults := panel["fieldConfig"].(map[string]interface{})["defaults"].(map[string]interface{})
+		defaults["links"] = dataLinks
 	}
 
 	return panel
@@ -277,9 +288,30 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				createNoLabelTimeseriesPanel(10, "GPU Utilization", "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}),
 				createNoLabelTimeseriesPanel(11, "GPU Memory Usage", "GPU Memory", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil),
 
-				// Evaluator metrics
-				createSimpleTimeseriesPanel(12, "Evaluator Score", promEvalScore, 0, 40, 12, 8, "short", map[string]interface{}{"min": 0, "max": 1}),
-				createSimpleTimeseriesPanel(13, "Evaluator Pass Rate", promEvalPassRate, 12, 40, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}),
+				// Evaluator metrics with data links to Loki logs
+				// IMPORTANT: These metrics show aggregated average scores calculated from multiple benchmark iterations.
+				// Each data point represents the mean evaluator score across all iterations for that model/test_case combination,
+				// collected over the metric export interval (5s). Clicking a point shows individual evaluation logs within ±30s
+				// that contributed to calculating that aggregate value. You'll see multiple log entries (one per benchmark iteration)
+				// with individual scores (0.0, 0.5, or 1.0) and detailed reasoning from the evaluator LLM.
+				createSimpleTimeseriesPanelWithLinks(12, "Evaluator Score", promEvalScore, 0, 40, 12, 8, "short",
+					map[string]interface{}{"min": 0, "max": 1},
+					[]map[string]interface{}{
+						{
+							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case}, ±30s window)",
+							"url":   "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} | scope_name=`evaluator` | test_case=`${__field.labels.case}`\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__value.time:date:iso}-30s\",\"to\":\"${__value.time:date:iso}+30s\"}}",
+						},
+					},
+				),
+				createSimpleTimeseriesPanelWithLinks(13, "Evaluator Pass Rate", promEvalPassRate, 12, 40, 12, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1},
+					[]map[string]interface{}{
+						{
+							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case}, ±30s window)",
+							"url":   "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} | scope_name=`evaluator` | test_case=`${__field.labels.case}`\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__value.time:date:iso}-30s\",\"to\":\"${__value.time:date:iso}+30s\"}}",
+						},
+					},
+				),
 
 				// ns/op metric (Go benchmark) - moved to bottom
 				createSimpleTimeseriesPanel(14, "ns/op (Go Benchmark)", promNsPerOp, 0, 48, 24, 8, "ns", nil),
