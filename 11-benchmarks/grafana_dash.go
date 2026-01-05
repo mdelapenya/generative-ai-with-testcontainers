@@ -192,6 +192,13 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 	promGPUMemory := semconv.ToPrometheusMetricName(semconv.MetricGPUMemory)
 	promEvalScore := semconv.ToPrometheusMetricName(semconv.MetricLLMEvalScore)
 	promEvalPassRate := semconv.ToPrometheusMetricName(semconv.MetricLLMEvalPassRate)
+	// Tool calling metrics
+	promToolCallLatency := semconv.ToPrometheusMetricName(semconv.MetricLLMToolCallLatency)
+	promToolCallCount := semconv.ToPrometheusMetricName(semconv.MetricLLMToolCallCount)
+	promToolIterationCount := semconv.ToPrometheusMetricName(semconv.MetricLLMIterationCount)
+	promToolSuccessRate := semconv.ToPrometheusMetricName(semconv.MetricLLMToolSuccessRate)
+	promToolParamAccuracy := semconv.ToPrometheusMetricName(semconv.MetricLLMToolParamAccuracy)
+	promToolSelectionAccuracy := semconv.ToPrometheusMetricName(semconv.MetricLLMToolSelectionAccuracy)
 
 	dashboard := map[string]interface{}{
 		"dashboard": map[string]interface{}{
@@ -313,8 +320,19 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 					},
 				),
 
+				// Tool calling metrics (only populated for tool-assisted test cases)
+				createHistogramPanel(15, "Tool Call Latency", promToolCallLatency, 0, 48, "ms"),
+				createSimpleTimeseriesPanel(16, "Tool Calls per Operation", promToolCallCount, 0, 56, 8, 8, "short", nil),
+				createSimpleTimeseriesPanel(17, "LLM-Tool Iterations", promToolIterationCount, 8, 56, 8, 8, "short", nil),
+				createSimpleTimeseriesPanel(18, "Tool Success Rate", promToolSuccessRate, 16, 56, 8, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1}),
+				createSimpleTimeseriesPanel(19, "Tool Parameter Accuracy", promToolParamAccuracy, 0, 64, 12, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1}),
+				createSimpleTimeseriesPanel(20, "Tool Selection Accuracy", promToolSelectionAccuracy, 12, 64, 12, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1}),
+
 				// ns/op metric (Go benchmark) - moved to bottom
-				createSimpleTimeseriesPanel(14, "ns/op (Go Benchmark)", promNsPerOp, 0, 48, 24, 8, "ns", nil),
+				createSimpleTimeseriesPanel(21, "ns/op (Go Benchmark)", promNsPerOp, 0, 72, 24, 8, "ns", nil),
 			},
 		},
 		"overwrite": true,
