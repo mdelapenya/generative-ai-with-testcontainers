@@ -160,6 +160,11 @@ type BenchmarkResult struct {
 	EvalResponse     string  // "yes", "no", or "unsure"
 	EvalReason       string  // Reasoning from evaluator
 	ResponseContent  string  // The actual LLM response content
+	// Tool calling metrics (only populated for tool-assisted test cases)
+	ToolCallCount         int     // Number of tool calls made
+	ToolIterationCount    int     // Number of LLM-tool iterations
+	ToolParamAccuracy     float64 // Tool parameter extraction accuracy (0.0-1.0)
+	ToolSelectionAccuracy float64 // Tool selection accuracy (0.0-1.0)
 }
 
 // BenchmarkLLMs runs benchmarks for all models and test cases
@@ -340,6 +345,10 @@ func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, 
 		result.TotalTokens = resp.TotalTokens
 		result.ResponseContent = resp.Content
 
+		// Populate tool metrics
+		result.ToolCallCount = len(resp.ToolCalls)
+		result.ToolIterationCount = resp.Iterations
+
 		// Evaluate the response using the evaluator agent
 		if evaluatorAgent != nil {
 			evalResult, evalErr := evaluateResponse(ctx, tc.Name, tc.UserPrompt, resp.Content)
@@ -349,6 +358,15 @@ func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, 
 				result.EvalReason = evalResult.Reason
 			} else {
 				fmt.Printf("⚠️  Evaluation error for %s/%s/temp%.1f: %v\n", model, tc.Name, temp, evalErr)
+			}
+
+			// Evaluate tool parameter extraction accuracy
+			toolEvalResult, toolEvalErr := evaluateToolCalls(ctx, tc.Name, tc.UserPrompt, resp.Content)
+			if toolEvalErr == nil {
+				result.ToolParamAccuracy = toolEvalResult.ParameterAccuracy
+				result.ToolSelectionAccuracy = toolEvalResult.ToolSelectionScore
+			} else {
+				fmt.Printf("⚠️  Tool evaluation error for %s/%s/temp%.1f: %v\n", model, tc.Name, temp, toolEvalErr)
 			}
 		}
 	} else {
@@ -372,6 +390,21 @@ func evaluateResponse(ctx context.Context, testCaseName string, question string,
 
 	// Evaluate the response
 	return agent.Evaluate(ctx, testCaseName, question, answer, evalCriteria.Reference)
+}
+
+// evaluateToolCalls uses the evaluator agent to assess tool calling accuracy
+func evaluateToolCalls(ctx context.Context, testCaseName string, question string, answer string) (*evaluator.ToolEvaluationResult, error) {
+	criteria := evaluator.GetCriteria()
+	evalCriteria, ok := criteria[testCaseName]
+	if !ok {
+		return nil, fmt.Errorf("no tool evaluation criteria found for test case: %s", testCaseName)
+	}
+
+	// Create evaluator agent with test-case-specific system prompt
+	agent := evaluator.NewAgent(evaluatorAgent, evalCriteria.SystemPrompt)
+
+	// Evaluate tool calls
+	return agent.EvaluateToolCalls(ctx, testCaseName, question, answer, evalCriteria.Reference)
 }
 
 // reportAggregateMetrics calculates and reports aggregate metrics
@@ -534,6 +567,12 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	totalEvalScore := 0.0
 	evalCount := 0
 	evalYesCount := 0
+	// Tool metrics
+	totalToolCalls := 0
+	totalToolIterations := 0
+	totalToolParamAccuracy := 0.0
+	totalToolSelectionAccuracy := 0.0
+	toolMetricsCount := 0
 
 	for _, r := range results {
 		if r.Success {
@@ -564,6 +603,15 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 				if r.EvalResponse == "yes" {
 					evalYesCount++
 				}
+			}
+
+			// Track tool metrics
+			if r.ToolCallCount > 0 || r.ToolIterationCount > 0 {
+				totalToolCalls += r.ToolCallCount
+				totalToolIterations += r.ToolIterationCount
+				totalToolParamAccuracy += r.ToolParamAccuracy
+				totalToolSelectionAccuracy += r.ToolSelectionAccuracy
+				toolMetricsCount++
 			}
 		}
 	}
@@ -624,8 +672,29 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 		outputTokensPerSec = avgOutputTokens / avgGenerationTimeSec
 	}
 
+	// Calculate tool metrics averages
+	avgToolCallCount := 0.0
+	avgToolIterationCount := 0.0
+	avgToolParamAccuracy := 0.0
+	avgToolSelectionAccuracy := 0.0
+	toolSuccessRate := 1.0 // Default to 1.0 for non-tool cases
+
+	if toolMetricsCount > 0 {
+		avgToolCallCount = float64(totalToolCalls) / float64(toolMetricsCount)
+		avgToolIterationCount = float64(totalToolIterations) / float64(toolMetricsCount)
+		avgToolParamAccuracy = totalToolParamAccuracy / float64(toolMetricsCount)
+		avgToolSelectionAccuracy = totalToolSelectionAccuracy / float64(toolMetricsCount)
+		// Tool success rate = successful tool-assisted operations / total operations
+		toolSuccessRate = float64(toolMetricsCount) / float64(successCount)
+	}
+
 	// nsPerOp is passed in from the Go benchmark framework (b.Elapsed() / b.N)
-	metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp)
+	// Check if this is a tool-assisted case
+	if isToolAssistedCase(testCase) {
+		metricsCollector.UpdateAggregatesWithToolMetrics(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, avgToolCallCount, avgToolIterationCount, toolSuccessRate, avgToolParamAccuracy, avgToolSelectionAccuracy)
+	} else {
+		metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp)
+	}
 }
 
 // percentile calculates the nth percentile of a sorted slice
