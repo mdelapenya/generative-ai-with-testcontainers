@@ -70,6 +70,22 @@ var (
 			SystemPrompt: "You are a Go programming expert.",
 			UserPrompt:   "Write a Go function that calculates the Fibonacci sequence using recursion.",
 		},
+		// Tool-assisted test cases
+		{
+			Name:         "calculator-reasoning",
+			SystemPrompt: "You are a helpful assistant with access to a calculator tool. Use the calculator for all arithmetic operations.",
+			UserPrompt:   "Calculate (125 * 47) + (980 / 20) - 156. Break down each step and use the calculator tool for each operation. Then explain the final result.",
+		},
+		{
+			Name:         "code-validation",
+			SystemPrompt: "You are a helpful coding assistant with access to a Python code executor. Always execute code to verify correctness.",
+			UserPrompt:   "Write Python code to generate the first 10 Fibonacci numbers, then execute it to verify correctness.",
+		},
+		{
+			Name:         "api-data-retrieval",
+			SystemPrompt: "You are a helpful assistant with access to web APIs. Use the HTTP client to fetch real-time data.",
+			UserPrompt:   "Use the HTTP client to fetch information about repository 'testcontainers-go' from GitHub API (https://api.github.com/repos/testcontainers/testcontainers-go) and summarize the key details.",
+		},
 	}
 
 	// Temperatures to test with each test case
@@ -187,7 +203,13 @@ func BenchmarkLLMs(b *testing.B) {
 
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						result := runSingleBenchmark(ctx, client, modelName, tc, temp)
+						var result BenchmarkResult
+						// Route to appropriate function based on test case type
+						if isToolAssistedCase(tc.Name) {
+							result = runSingleBenchmarkWithTools(ctx, client, modelName, tc, temp)
+						} else {
+							result = runSingleBenchmark(ctx, client, modelName, tc, temp)
+						}
 						results = append(results, result)
 
 						// Record latency with OpenTelemetry
@@ -234,6 +256,73 @@ func BenchmarkLLMs(b *testing.B) {
 // runSingleBenchmark executes a single benchmark iteration
 func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model string, tc TestCase, temp float64) BenchmarkResult {
 	resp, err := client.GenerateWithTemp(ctx, tc.Name, tc.SystemPrompt, tc.UserPrompt, temp)
+
+	result := BenchmarkResult{
+		Model:    model,
+		TestCase: tc.Name,
+		Temp:     temp,
+		Success:  err == nil,
+	}
+
+	if err == nil {
+		result.Latency = resp.Latency
+		result.TTFT = resp.TTFT
+		result.PromptEvalTime = resp.PromptEvalTime
+		result.PromptTokens = resp.PromptTokens
+		result.CompletionTokens = resp.CompletionTokens
+		result.TotalTokens = resp.TotalTokens
+		result.ResponseContent = resp.Content
+
+		// Evaluate the response using the evaluator agent
+		if evaluatorAgent != nil {
+			evalResult, evalErr := evaluateResponse(ctx, tc.Name, tc.UserPrompt, resp.Content)
+			if evalErr == nil {
+				result.EvalScore = evalResult.Score
+				result.EvalResponse = evalResult.Response
+				result.EvalReason = evalResult.Reason
+			} else {
+				fmt.Printf("⚠️  Evaluation error for %s/%s/temp%.1f: %v\n", model, tc.Name, temp, evalErr)
+			}
+		}
+	} else {
+		// Log error for debugging (will appear in benchmark output)
+		fmt.Printf("❌ Error in %s/%s/temp%.1f: %v\n", model, tc.Name, temp, err)
+	}
+
+	return result
+}
+
+// isToolAssistedCase checks if a test case requires tool calling
+func isToolAssistedCase(name string) bool {
+	toolCases := []string{"calculator-reasoning", "code-validation", "api-data-retrieval"}
+	for _, tc := range toolCases {
+		if tc == name {
+			return true
+		}
+	}
+	return false
+}
+
+// getToolsForCase returns the tools available for a specific test case
+func getToolsForCase(name string) []interface{} {
+	switch name {
+	case "calculator-reasoning":
+		return []interface{}{llmclient.GetCalculatorTool()}
+	case "code-validation":
+		return []interface{}{llmclient.GetCodeExecutorTool()}
+	case "api-data-retrieval":
+		return []interface{}{llmclient.GetHTTPClientTool()}
+	default:
+		return nil
+	}
+}
+
+// runSingleBenchmarkWithTools executes a single benchmark iteration with tool calling
+func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, model string, tc TestCase, temp float64) BenchmarkResult {
+	tools := getToolsForCase(tc.Name)
+	maxIterations := 10 // Maximum LLM-tool iterations
+
+	resp, err := client.GenerateWithTools(ctx, tc.Name, tc.SystemPrompt, tc.UserPrompt, temp, tools, maxIterations)
 
 	result := BenchmarkResult{
 		Model:    model,
