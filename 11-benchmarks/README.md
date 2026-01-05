@@ -19,13 +19,16 @@ The goal is to find *the smallest model that won't completely fail you*.
 
 This benchmark implements a **full factorial design** to systematically explore:
 - **Models**: 4 local models + optional OpenAI GPT-5.1 (if `OPENAI_API_KEY` is set)
-- **Test Cases**: 5 prompts (code-explanation, mathematical-operations, creative-writing, factual-question, code-generation)
+- **Test Cases**: 8 prompts:
+  - 5 standard prompts (code-explanation, mathematical-operations, creative-writing, factual-question, code-generation)
+  - 3 tool-assisted prompts (calculator-reasoning, code-validation, api-data-retrieval) - See [Tool Calling](#tool-calling-functionality) below
 - **Temperatures**: 5 values (0.1, 0.3, 0.5, 0.7, 0.9)
 
-**Total**: 100 scenarios (125 with OpenAI) to answer questions like:
+**Total**: 160 scenarios (200 with OpenAI) to answer questions like:
 - Which model performs best at low/high temperatures?
 - How does quality vary across temperature settings?
 - What's the optimal temperature for each model-task combination?
+- Which models excel at tool calling and parameter extraction?
 
 ## Code Explanation
 
@@ -60,19 +63,92 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 
 - `gpu.go`: Samples GPU metrics with auto-detection for NVIDIA (`nvidia-smi`) and Apple Silicon (`ioreg`). See [GPU Metrics](#gpu-metrics) section below for details.
 
-- `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 10 panels:
+- `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 21 panels:
   1. **Latency Percentiles (p50/p95)** - Overall response time metrics
   2. **Latency Histogram with Exemplars** - Response time distribution with drill-down to traces
-  3. **Prompt Evaluation Time (p50/p95)** - NEW: Time to first token metrics
-  4. **Prompt Eval Time Distribution with Exemplars** - NEW: Prompt processing patterns
+  3. **Prompt Evaluation Time (p50/p95)** - Time to first token metrics
+  4. **Prompt Eval Time Distribution with Exemplars** - Prompt processing patterns
   5. **Tokens per Operation** - Token usage and verbosity
   6. **Success Rate** - Model reliability metrics
   7. **Tokens per Second** - Generation throughput
   8. **GPU Utilization** (Optional) - Hardware efficiency
   9. **GPU Memory** (Optional) - Memory consumption
-  10. **Score per Operation** - Quality metrics
+  10. **Evaluator Score** - Quality assessment with drill-down to Loki logs
+  11. **Evaluator Pass Rate** - Quality pass rate with drill-down to Loki logs
+  12-17. **Tool Calling Metrics** (NEW) - Only populated for tool-assisted test cases:
+      - **Tool Call Latency** - Execution time histogram per tool
+      - **Tool Calls per Operation** - Average calls per benchmark
+      - **LLM-Tool Iterations** - Roundtrips between LLM and tools
+      - **Tool Success Rate** - Tool execution success ratio
+      - **Tool Parameter Accuracy** - Parameter extraction correctness (0.0-1.0)
+      - **Tool Selection Accuracy** - Correct tool choice rate (0.0-1.0)
+  18. **ns/op (Go Benchmark)** - Go benchmark framework metric
 
   The dashboard includes template variables for filtering by model, test case, and temperature. The dashboard uses a fixed UID (`llm-bench-dmr-tc`) to ensure it is **automatically updated** on each benchmark run without creating duplicates.
+
+## Tool Calling Functionality
+
+This benchmark now includes **tool calling** capabilities to test how well models can use external tools to solve complex, multi-step tasks. Three new tool-assisted test cases have been added:
+
+### Available Tools
+
+1. **Calculator Tool** (`tools/calculator.go`):
+   - Operations: add, subtract, multiply, divide, power, sqrt, factorial
+   - Tests multi-step arithmetic reasoning
+   - Example: Calculate `(125 * 47) + (980 / 20) - 156`
+
+2. **Python Code Executor** (`tools/code_executor.go`):
+   - Executes Python code in isolated Docker container
+   - Base image: `python:3.12-alpine`
+   - Safety limits: 30s timeout, 128MB memory, no network access
+   - Tests code generation and validation
+
+3. **HTTP Client** (`tools/http_client.go`):
+   - Generic HTTP GET/POST client
+   - Tests API interaction and data retrieval
+   - Example: Fetch repository information from GitHub API
+
+### Tool-Assisted Test Cases
+
+- **calculator-reasoning**: Model must break down complex arithmetic into multiple calculator tool calls, then synthesize the final answer
+- **code-validation**: Model generates Python code for Fibonacci sequence, executes it via code executor tool, and validates output
+- **api-data-retrieval**: Model uses HTTP client to fetch GitHub repository data and summarizes key details
+
+### Tool Calling Observability
+
+The implementation includes comprehensive observability for tool calling:
+
+**OpenTelemetry Callback Spans** (`callbacks/otel_handler.go`):
+- Traces tool execution: `langchaingo.tool.start`, `langchaingo.tool.end`
+- Tracks LLM lifecycle: `langchaingo.llm.generate.start`, `langchaingo.llm.generate.end`
+- Records tool names, inputs, outputs, duration in span attributes
+- Creates parent-child span hierarchy visible in Grafana Tempo
+
+**Tool Metrics** (6 new metrics):
+- Tool call latency histogram: Execution time per tool
+- Tool calls per operation: How many tools models invoke
+- LLM-tool iterations: Back-and-forth roundtrips
+- Tool success rate: Execution success ratio
+- Tool parameter accuracy: Evaluator-assessed correctness (0.0-1.0)
+- Tool selection accuracy: Did model choose the right tool? (0.0-1.0)
+
+**Tool Parameter Evaluation**:
+The evaluator agent (`evaluator/evaluator.go`) assesses not just response quality, but also tool calling accuracy:
+- Parameter extraction: Did the model extract correct arguments?
+- Tool selection: Did the model choose the appropriate tool?
+- Call sequence: Are operations performed in logical order?
+
+Evaluation criteria stored in `evaluator/testdata/evaluation/tool-parameter-extraction/` with system prompts and reference files for each test case.
+
+### Model Compatibility
+
+**Note**: Tool-assisted test cases require models that support function calling. Models without function calling support will:
+- Continue to run the 5 standard test cases normally
+- May fail or error on tool-assisted cases (errors are caught and logged)
+
+The benchmark automatically routes test cases:
+- Standard cases → `runSingleBenchmark()` (no tools)
+- Tool-assisted cases → `runSingleBenchmarkWithTools()` (with tools)
 
 ## Running the Example
 
