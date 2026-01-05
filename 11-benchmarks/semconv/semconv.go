@@ -87,3 +87,37 @@ func ToPrometheusMetricName(otelMetricName string) string {
 		return promName
 	}
 }
+
+// Langchaingo Callback Spans - Attribute keys
+const (
+	// LLM lifecycle attributes
+	AttrLLMMessagesCount         = "llm.messages.count"
+	AttrLLMMessageRole           = "llm.message.role"
+	AttrLLMMessageContent        = "llm.message.content"
+	AttrLLMResponseContent       = "llm.response.content"
+	AttrLLMResponseChoices       = "llm.response.choices.count"
+	AttrLLMUsagePromptTokens     = "llm.usage.prompt_tokens"
+	AttrLLMUsageCompletionTokens = "llm.usage.completion_tokens"
+	AttrLLMUsageTotalTokens      = "llm.usage.total_tokens"
+
+	// Tool calling attributes (KEY FOR TOOL OBSERVABILITY)
+	AttrToolName       = "tool.name"
+	AttrToolInput      = "tool.input"
+	AttrToolOutput     = "tool.output"
+	AttrToolDurationMs = "tool.duration_ms"
+	AttrToolCallID     = "tool.call_id"
+
+	// Error attributes
+	AttrErrorType    = "error.type"
+	AttrErrorMessage = "error.message"
+)
+
+// Additional metric names for tool calling
+const (
+	MetricLLMToolCallCount         = "llm.tool_call.count"
+	MetricLLMToolCallLatency       = "llm.tool_call.latency"
+	MetricLLMIterationCount        = "llm.iteration.count"
+	MetricLLMToolSuccessRate       = "llm.tool.success_rate"
+	MetricLLMToolParamAccuracy     = "llm.tool.param_accuracy"
+	MetricLLMToolSelectionAccuracy = "llm.tool.selection_accuracy"
+)
