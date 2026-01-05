@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/callbacks"
 	"github.com/testcontainers/testcontainers-go"
 	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
 	lgtm "github.com/testcontainers/testcontainers-go/modules/grafana-lgtm"
@@ -152,6 +153,7 @@ func initializeEvaluatorAgent(ctx context.Context) (llms.Model, error) {
 		return openai.New(
 			openai.WithModel("gpt-4o-mini"),
 			openai.WithToken(apiKey),
+			openai.WithCallback(callbacks.NewOTelCallbackHandler()),
 		)
 	}
 
@@ -173,5 +175,6 @@ func initializeEvaluatorAgent(ctx context.Context) (llms.Model, error) {
 		openai.WithModel(evaluatorModel),
 		openai.WithBaseURL(dmrEndpoint),
 		openai.WithToken("dummy"), // DMR doesn't require auth
+		openai.WithCallback(callbacks.NewOTelCallbackHandler()),
 	)
 }
