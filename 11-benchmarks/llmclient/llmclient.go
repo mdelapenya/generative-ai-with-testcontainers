@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
+	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/tools"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 	"go.opentelemetry.io/otel"
@@ -251,4 +252,211 @@ func sanitizeUTF8(s string) string {
 func estimateTokens(text string) int {
 	// Rough approximation: 1 token ≈ 4 characters for English text
 	return len(text) / 4
+}
+
+// ToolResult contains information about a tool call execution
+type ToolResult struct {
+	ToolName string
+	Input    string
+	Output   string
+	Duration time.Duration
+	Error    error
+}
+
+// ResponseWithTools contains the LLM response and metadata including tool execution info
+type ResponseWithTools struct {
+	*Response                // Embed the base Response
+	ToolCalls       []ToolResult
+	Iterations      int           // Number of LLM-tool roundtrips
+	TotalLatency    time.Duration // Total time including all tool executions
+	LLMLatency      time.Duration // LLM inference time only
+	ToolLatency     time.Duration // Tool execution time only
+	FinalContent    string        // Final synthesized response
+}
+
+// GenerateWithTools sends a prompt to the LLM with tools and iteratively executes tool calls
+// until the model provides a final answer or reaches maxIterations
+func (c *Client) GenerateWithTools(ctx context.Context, testCase string, systemPrompt, userPrompt string, temperature float64, tools []llms.Tool, maxIterations int) (*ResponseWithTools, error) {
+	spanAttrs := []attribute.KeyValue{
+		attribute.String(semconv.AttrModel, c.model),
+		attribute.String(semconv.AttrSystemPrompt, systemPrompt),
+		attribute.String(semconv.AttrUserPrompt, userPrompt),
+		attribute.Float64(semconv.AttrTemperature, temperature),
+	}
+	if testCase != "" {
+		spanAttrs = append(spanAttrs, attribute.String(semconv.AttrCase, testCase))
+	}
+
+	ctx, span := c.tracer.Start(ctx, "llm.generate",
+		trace.WithAttributes(spanAttrs...),
+	)
+	defer span.End()
+
+	totalStart := time.Now()
+	var llmLatency, toolLatency time.Duration
+	var toolResults []ToolResult
+	iterations := 0
+
+	// Build initial message history
+	messages := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
+		llms.TextParts(llms.ChatMessageTypeHuman, userPrompt),
+	}
+
+	// Iterative loop for tool calling
+	for iterations < maxIterations {
+		iterations++
+		llmStart := time.Now()
+
+		// Generate content with tools
+		completion, err := c.llm.GenerateContent(ctx, messages,
+			llms.WithTemperature(temperature),
+			llms.WithTools(tools),
+		)
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("generate content with tools: %w", err)
+		}
+
+		llmLatency += time.Since(llmStart)
+
+		// Check if there are tool calls in the response
+		if len(completion.Choices) == 0 {
+			return nil, fmt.Errorf("no response choices returned from model")
+		}
+
+		choice := completion.Choices[0]
+
+		// If there are no tool calls, we have the final answer
+		if len(choice.ToolCalls) == 0 {
+			// Extract final content
+			finalContent := choice.Content
+
+			// Build response with tool metadata
+			totalLatency := time.Since(totalStart)
+
+			// Get token usage from first LLM call (approximation)
+			promptTokens := 0
+			completionTokens := 0
+			totalTokens := 0
+
+			if choice.GenerationInfo != nil {
+				if pt, ok := choice.GenerationInfo["PromptTokens"].(int); ok {
+					promptTokens = pt
+				}
+				if ct, ok := choice.GenerationInfo["CompletionTokens"].(int); ok {
+					completionTokens = ct
+				}
+				if tt, ok := choice.GenerationInfo["TotalTokens"].(int); ok {
+					totalTokens = tt
+				}
+			}
+
+			if totalTokens == 0 {
+				promptTokens = estimateTokens(systemPrompt + userPrompt)
+				completionTokens = estimateTokens(finalContent)
+				totalTokens = promptTokens + completionTokens
+			}
+
+			// Add response metadata to span
+			span.SetAttributes(
+				attribute.Int(semconv.AttrPromptTokens, promptTokens),
+				attribute.Int(semconv.AttrCompletionTokens, completionTokens),
+				attribute.Int(semconv.AttrTotalTokens, totalTokens),
+				attribute.Int64(semconv.AttrLatencyMs, totalLatency.Milliseconds()),
+				attribute.Int("tool_call_count", len(toolResults)),
+				attribute.Int("iterations", iterations),
+			)
+
+			return &ResponseWithTools{
+				Response: &Response{
+					Content:          finalContent,
+					PromptTokens:     promptTokens,
+					CompletionTokens: completionTokens,
+					TotalTokens:      totalTokens,
+					Latency:          totalLatency,
+				},
+				ToolCalls:    toolResults,
+				Iterations:   iterations,
+				TotalLatency: totalLatency,
+				LLMLatency:   llmLatency,
+				ToolLatency:  toolLatency,
+				FinalContent: finalContent,
+			}, nil
+		}
+
+		// Execute tool calls
+		for _, toolCall := range choice.ToolCalls {
+			toolStart := time.Now()
+
+			// Execute the tool
+			output, err := executeToolCall(ctx, toolCall)
+
+			toolDuration := time.Since(toolStart)
+			toolLatency += toolDuration
+
+			// Record tool execution result
+			toolResult := ToolResult{
+				ToolName: toolCall.FunctionCall.Name,
+				Input:    toolCall.FunctionCall.Arguments,
+				Output:   output,
+				Duration: toolDuration,
+				Error:    err,
+			}
+			toolResults = append(toolResults, toolResult)
+
+			// Build tool response message
+			messages = append(messages, llms.MessageContent{
+				Role: llms.ChatMessageTypeTool,
+				Parts: []llms.ContentPart{
+					llms.ToolCallResponse{
+						ToolCallID: toolCall.ID,
+						Name:       toolCall.FunctionCall.Name,
+						Content:    output,
+					},
+				},
+			})
+		}
+	}
+
+	// If we reach maxIterations without a final answer, return what we have
+	totalLatency := time.Since(totalStart)
+	span.SetAttributes(
+		attribute.Int("tool_call_count", len(toolResults)),
+		attribute.Int("iterations", iterations),
+		attribute.Int64(semconv.AttrLatencyMs, totalLatency.Milliseconds()),
+	)
+
+	return &ResponseWithTools{
+		Response: &Response{
+			Content:  "Maximum iterations reached without final answer",
+			Latency:  totalLatency,
+		},
+		ToolCalls:    toolResults,
+		Iterations:   iterations,
+		TotalLatency: totalLatency,
+		LLMLatency:   llmLatency,
+		ToolLatency:  toolLatency,
+		FinalContent: "Maximum iterations reached without final answer",
+	}, fmt.Errorf("maximum iterations (%d) reached without final answer", maxIterations)
+}
+
+// executeToolCall routes a tool call to the appropriate tool implementation
+func executeToolCall(ctx context.Context, toolCall llms.ToolCall) (string, error) {
+	switch toolCall.FunctionCall.Name {
+	case "calculator":
+		calc := tools.NewCalculator()
+		return calc.Execute(toolCall.FunctionCall.Arguments)
+
+	case "execute_python":
+		executor := tools.NewCodeExecutor()
+		return executor.Execute(toolCall.FunctionCall.Arguments)
+
+	case "http_get":
+		httpClient := tools.NewHTTPClient()
+		return httpClient.Execute(toolCall.FunctionCall.Arguments)
+
+	default:
+		return "", fmt.Errorf("unknown tool: %s", toolCall.FunctionCall.Name)
+	}
 }
