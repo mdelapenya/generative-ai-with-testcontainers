@@ -21,6 +21,15 @@ type EvaluationResult struct {
 	Score          float64 `json:"score"` // 0.0 to 1.0
 }
 
+// ToolEvaluationResult represents the evaluation of tool calling accuracy
+type ToolEvaluationResult struct {
+	ToolSelectionScore float64 `json:"tool_selection_score"` // 0.0-1.0: correct tool chosen
+	ParameterAccuracy  float64 `json:"parameter_accuracy"`   // 0.0-1.0: parameters match expected
+	SequenceScore      float64 `json:"sequence_score"`       // 0.0-1.0: logical call order
+	OverallScore       float64 `json:"overall_score"`        // Average of above
+	Reason             string  `json:"reason"`               // Explanation
+}
+
 // Evaluator defines the interface for evaluating LLM responses
 type Evaluator interface {
 	Evaluate(ctx context.Context, testCase string, question string, answer string, reference string) (*EvaluationResult, error)
@@ -271,6 +280,25 @@ var codeGenerationSystemPrompt string
 //go:embed testdata/evaluation/code-generation/reference.txt
 var codeGenerationReference string
 
+// Tool parameter extraction evaluation criteria
+//go:embed testdata/evaluation/tool-parameter-extraction/calculator-reasoning/system_prompt.txt
+var calculatorReasoningToolSystemPrompt string
+
+//go:embed testdata/evaluation/tool-parameter-extraction/calculator-reasoning/reference.txt
+var calculatorReasoningToolReference string
+
+//go:embed testdata/evaluation/tool-parameter-extraction/code-validation/system_prompt.txt
+var codeValidationToolSystemPrompt string
+
+//go:embed testdata/evaluation/tool-parameter-extraction/code-validation/reference.txt
+var codeValidationToolReference string
+
+//go:embed testdata/evaluation/tool-parameter-extraction/api-data-retrieval/system_prompt.txt
+var apiDataRetrievalToolSystemPrompt string
+
+//go:embed testdata/evaluation/tool-parameter-extraction/api-data-retrieval/reference.txt
+var apiDataRetrievalToolReference string
+
 // Criteria defines the criteria for evaluating responses for different test cases
 type Criteria struct {
 	TestCaseName string
@@ -307,5 +335,88 @@ func GetCriteria() map[string]Criteria {
 			SystemPrompt: strings.TrimSpace(codeGenerationSystemPrompt),
 			Reference:    strings.TrimSpace(codeGenerationReference),
 		},
+		// Tool parameter extraction criteria
+		"calculator-reasoning": {
+			TestCaseName: "calculator-reasoning",
+			SystemPrompt: strings.TrimSpace(calculatorReasoningToolSystemPrompt),
+			Reference:    strings.TrimSpace(calculatorReasoningToolReference),
+		},
+		"code-validation": {
+			TestCaseName: "code-validation",
+			SystemPrompt: strings.TrimSpace(codeValidationToolSystemPrompt),
+			Reference:    strings.TrimSpace(codeValidationToolReference),
+		},
+		"api-data-retrieval": {
+			TestCaseName: "api-data-retrieval",
+			SystemPrompt: strings.TrimSpace(apiDataRetrievalToolSystemPrompt),
+			Reference:    strings.TrimSpace(apiDataRetrievalToolReference),
+		},
 	}
+}
+
+// EvaluateToolCalls evaluates the accuracy of tool calling in an LLM response
+// It checks tool selection, parameter correctness, and call sequence
+func (e *Agent) EvaluateToolCalls(ctx context.Context, testCase string, question string, answer string, reference string) (*ToolEvaluationResult, error) {
+	// Use the same evaluation template but with tool-specific prompt
+	userMessage := fmt.Sprintf(e.userTemplate, question, answer, reference)
+
+	// Create message content
+	msgContent := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, e.systemMessage),
+		llms.TextParts(llms.ChatMessageTypeHuman, userMessage),
+	}
+
+	// Generate response with deterministic parameters
+	resp, err := e.chatModel.GenerateContent(ctx, msgContent,
+		llms.WithTemperature(0.0),
+		llms.WithTopK(1),
+		llms.WithSeed(42),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tool evaluation: %w", err)
+	}
+
+	// Extract response text
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("no response choices returned from evaluator")
+	}
+
+	var responseText string
+	for _, choice := range resp.Choices {
+		if choice.Content != "" {
+			responseText += choice.Content
+		}
+	}
+
+	// Try to extract JSON from the response
+	jsonText := extractJSON(responseText)
+	if jsonText == "" {
+		return nil, fmt.Errorf("no JSON found in tool evaluation response (response: %s)", responseText)
+	}
+
+	// Parse JSON response
+	var result ToolEvaluationResult
+	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse tool evaluation response as JSON: %w (response: %s)", err, jsonText)
+	}
+
+	// Calculate overall score as average of individual scores
+	result.OverallScore = (result.ToolSelectionScore + result.ParameterAccuracy + result.SequenceScore) / 3.0
+
+	// Log the tool evaluation result
+	logger := global.GetLoggerProvider().Logger("evaluator")
+	var record log.Record
+	record.SetSeverity(log.SeverityInfo)
+	record.SetBody(log.StringValue("Tool evaluation response"))
+	record.AddAttributes(
+		log.String("test_case", sanitizeUTF8(testCase)),
+		log.Float64("tool_selection_score", result.ToolSelectionScore),
+		log.Float64("parameter_accuracy", result.ParameterAccuracy),
+		log.Float64("sequence_score", result.SequenceScore),
+		log.Float64("overall_score", result.OverallScore),
+		log.String("reason", sanitizeUTF8(truncateString(result.Reason, 500))),
+	)
+	logger.Emit(ctx, record)
+
+	return &result, nil
 }
