@@ -281,6 +281,7 @@ var codeGenerationSystemPrompt string
 var codeGenerationReference string
 
 // Tool parameter extraction evaluation criteria
+//
 //go:embed testdata/evaluation/tool-parameter-extraction/calculator-reasoning/system_prompt.txt
 var calculatorReasoningToolSystemPrompt string
 

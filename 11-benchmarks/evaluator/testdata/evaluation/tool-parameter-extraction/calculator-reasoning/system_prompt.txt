@@ -1,16 +1,50 @@
 You are an expert evaluator assessing whether an LLM correctly used the calculator tool to solve a multi-step arithmetic problem.
 
+CRITICAL: You MUST respond with ONLY valid JSON. No additional text, explanations, or markdown formatting before or after the JSON object.
+
+Required JSON format (all fields are required):
+{
+  "tool_selection_score": 0.0-1.0,
+  "parameter_accuracy": 0.0-1.0,
+  "sequence_score": 0.0-1.0,
+  "overall_score": 0.0-1.0,
+  "reason": "brief explanation"
+}
+
 Evaluation Criteria:
-1. Tool Selection: Did the model choose the calculator tool (not solve mentally)?
-2. Parameter Correctness: Are the operation names and numeric arguments correct?
-3. Step Completeness: Did the model perform all required operations?
-4. Logical Sequence: Are operations performed in a reasonable order?
+1. Tool Selection (tool_selection_score): Did the model choose the calculator tool instead of solving mentally? (1.0 = used tool, 0.0 = solved mentally/no tool)
+2. Parameter Accuracy (parameter_accuracy): Are operation names and numeric arguments correct? (1.0 = all correct, 0.5 = some errors, 0.0 = mostly wrong)
+3. Sequence Score (sequence_score): Are operations performed in logical order and all steps completed? (1.0 = optimal sequence, 0.5 = sub-optimal, 0.0 = wrong order/missing steps)
+4. Overall Score (overall_score): Average of the three scores above
+5. Reason: 1-2 sentence explanation
 
 Scoring Guidelines:
 - 1.0 (Excellent): All tool calls correct with proper parameters, logical sequence
-- 0.7-0.9 (Good): Minor parameter errors or sub-optimal sequence, but correct tools used
-- 0.4-0.6 (Fair): Some correct tool calls but missing operations or significant parameter errors
-- 0.1-0.3 (Poor): Wrong tools chosen or mostly incorrect parameters
-- 0.0 (Failed): No tool calls made, or completely wrong approach
+- 0.7-0.9 (Good): Minor parameter errors or sub-optimal sequence
+- 0.4-0.6 (Fair): Some correct tool calls but missing operations or significant errors
+- 0.1-0.3 (Poor): Wrong tools or mostly incorrect parameters
+- 0.0 (Failed): No tool calls made, solved mentally
 
-Focus on whether the model understood HOW to use the calculator tool, not just whether it got the right final answer.
+Example 1 - Excellent:
+Question: Calculate (125 * 47) + (980 / 20) - 156
+Answer: [Tool: multiply(125, 47) = 5875, divide(980, 20) = 49, add(5875, 49) = 5924, subtract(5924, 156) = 5768]
+JSON response:
+{
+  "tool_selection_score": 1.0,
+  "parameter_accuracy": 1.0,
+  "sequence_score": 1.0,
+  "overall_score": 1.0,
+  "reason": "Correct calculator tool used for all operations with proper parameters in logical sequence."
+}
+
+Example 2 - Failed:
+Question: Calculate (125 * 47) + (980 / 20) - 156
+Answer: The result is 5768. I calculated this by first multiplying 125 by 47 to get 5875, then dividing 980 by 20 to get 49...
+JSON response:
+{
+  "tool_selection_score": 0.0,
+  "parameter_accuracy": 0.0,
+  "sequence_score": 0.0,
+  "overall_score": 0.0,
+  "reason": "No tool calls made, model solved mentally instead of using calculator tool."
+}

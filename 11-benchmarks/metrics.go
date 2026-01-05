@@ -8,6 +8,8 @@ import (
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -36,6 +38,7 @@ type AggregateMetrics struct {
 	ToolSuccessRate       float64 // Tool call success rate (0.0-1.0)
 	ToolParamAccuracy     float64 // Tool parameter extraction accuracy (0.0-1.0)
 	ToolSelectionAccuracy float64 // Correct tool selection rate (0.0-1.0)
+	ToolConvergence       float64 // Path convergence score (1.0 = optimal path)
 }
 
 // MetricsCollector collects and records LLM benchmark metrics
@@ -43,9 +46,9 @@ type MetricsCollector struct {
 	meter metric.Meter
 
 	// Histograms
-	latencyHistogram        metric.Float64Histogram
-	ttftHistogram           metric.Float64Histogram
-	promptEvalTimeHistogram metric.Float64Histogram
+	latencyHistogram         metric.Float64Histogram
+	ttftHistogram            metric.Float64Histogram
+	promptEvalTimeHistogram  metric.Float64Histogram
 	toolCallLatencyHistogram metric.Float64Histogram
 
 	// Store aggregate metrics per model/case/temp combination
@@ -466,6 +469,24 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		return nil, fmt.Errorf("failed to create tool selection accuracy gauge: %w", err)
 	}
 
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMToolConvergence,
+		metric.WithDescription("Tool calling path convergence score (1.0 = optimal path)"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.ToolConvergence, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create tool convergence gauge: %w", err)
+	}
+
 	return mc, nil
 }
 
@@ -582,7 +603,7 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 }
 
 // UpdateAggregatesWithToolMetrics updates the aggregate metrics including tool-specific metrics
-func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, toolCallCount, toolIterationCount, toolSuccessRate, toolParamAccuracy, toolSelectionAccuracy float64) {
+func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, toolCallCount, toolIterationCount, toolSuccessRate, toolParamAccuracy, toolSelectionAccuracy, toolConvergence float64) {
 	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
 
 	mc.aggregates[key] = &AggregateMetrics{
@@ -607,6 +628,7 @@ func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase stri
 		ToolSuccessRate:       toolSuccessRate,
 		ToolParamAccuracy:     toolParamAccuracy,
 		ToolSelectionAccuracy: toolSelectionAccuracy,
+		ToolConvergence:       toolConvergence,
 	}
 }
 
@@ -619,4 +641,52 @@ func (mc *MetricsCollector) UpdateGPUMetrics(utilization, memory float64) {
 // IncrementSuccess increments the successful request counter
 func (mc *MetricsCollector) IncrementSuccess() {
 	mc.successfulRequests++
+}
+
+// LogEvaluationError logs evaluation errors to OTel backend
+func (mc *MetricsCollector) LogEvaluationError(ctx context.Context, model, testCase string, temp float64, err error) {
+	logger := global.GetLoggerProvider().Logger("benchmark")
+	var record log.Record
+	record.SetSeverity(log.SeverityWarn)
+	record.SetBody(log.StringValue(fmt.Sprintf("Evaluation error for %s/%s/temp%.1f", model, testCase, temp)))
+	record.AddAttributes(
+		log.String(semconv.AttrModel, model),
+		log.String(semconv.AttrCase, testCase),
+		log.String(semconv.AttrTemp, fmt.Sprintf("%.1f", temp)),
+		log.String("error_type", "evaluation_error"),
+		log.String("error", err.Error()),
+	)
+	logger.Emit(ctx, record)
+}
+
+// LogToolEvaluationError logs tool evaluation errors to OTel backend
+func (mc *MetricsCollector) LogToolEvaluationError(ctx context.Context, model, testCase string, temp float64, err error) {
+	logger := global.GetLoggerProvider().Logger("benchmark")
+	var record log.Record
+	record.SetSeverity(log.SeverityWarn)
+	record.SetBody(log.StringValue(fmt.Sprintf("Tool evaluation error for %s/%s/temp%.1f", model, testCase, temp)))
+	record.AddAttributes(
+		log.String(semconv.AttrModel, model),
+		log.String(semconv.AttrCase, testCase),
+		log.String(semconv.AttrTemp, fmt.Sprintf("%.1f", temp)),
+		log.String("error_type", "tool_evaluation_error"),
+		log.String("error", err.Error()),
+	)
+	logger.Emit(ctx, record)
+}
+
+// LogBenchmarkError logs benchmark execution errors to OTel backend
+func (mc *MetricsCollector) LogBenchmarkError(ctx context.Context, model, testCase string, temp float64, err error) {
+	logger := global.GetLoggerProvider().Logger("benchmark")
+	var record log.Record
+	record.SetSeverity(log.SeverityError)
+	record.SetBody(log.StringValue(fmt.Sprintf("Benchmark error for %s/%s/temp%.1f", model, testCase, temp)))
+	record.AddAttributes(
+		log.String(semconv.AttrModel, model),
+		log.String(semconv.AttrCase, testCase),
+		log.String(semconv.AttrTemp, fmt.Sprintf("%.1f", temp)),
+		log.String("error_type", "benchmark_error"),
+		log.String("error", err.Error()),
+	)
+	logger.Emit(ctx, record)
 }

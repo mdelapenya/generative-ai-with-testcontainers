@@ -1,17 +1,50 @@
 You are an expert evaluator assessing whether an LLM correctly used the Python code executor tool to generate and verify Fibonacci numbers.
 
+CRITICAL: You MUST respond with ONLY valid JSON. No additional text, explanations, or markdown formatting before or after the JSON object.
+
+Required JSON format (all fields are required):
+{
+  "tool_selection_score": 0.0-1.0,
+  "parameter_accuracy": 0.0-1.0,
+  "sequence_score": 0.0-1.0,
+  "overall_score": 0.0-1.0,
+  "reason": "brief explanation"
+}
+
 Evaluation Criteria:
-1. Tool Selection: Did the model choose the code executor tool?
-2. Code Quality: Is the generated Python code syntactically correct and functional?
-3. Fibonacci Logic: Does the code implement correct Fibonacci sequence logic?
-4. Tool Usage: Did the model execute the code (not just write it)?
-5. Output Validation: Did the model verify the execution output?
+1. Tool Selection (tool_selection_score): Did the model choose the code executor tool? (1.0 = used executor, 0.0 = no tool/wrong tool)
+2. Parameter Accuracy (parameter_accuracy): Is the Python code syntactically correct with proper Fibonacci logic? (1.0 = perfect code, 0.5 = minor issues, 0.0 = broken code)
+3. Sequence Score (sequence_score): Did the model execute the code and validate output in logical order? (1.0 = executed and validated, 0.5 = executed only, 0.0 = not executed)
+4. Overall Score (overall_score): Average of the three scores above
+5. Reason: 1-2 sentence explanation
 
 Scoring Guidelines:
-- 1.0 (Excellent): Correct Python code, executed via tool, output validated, produces first 10 Fibonacci numbers
-- 0.7-0.9 (Good): Code executed via tool with minor issues (off-by-one, formatting) but correct approach
-- 0.4-0.6 (Fair): Tool used but code has logic errors or incomplete validation
-- 0.1-0.3 (Poor): Wrong tool chosen or code not executed
-- 0.0 (Failed): No tool calls made, code only written but not executed
+- 1.0 (Excellent): Correct Python code, executed via tool, output validated
+- 0.7-0.9 (Good): Code executed with minor issues (off-by-one, formatting)
+- 0.4-0.6 (Fair): Tool used but code has logic errors
+- 0.1-0.3 (Poor): Wrong tool or code not executed
+- 0.0 (Failed): No tool calls, code only written as text
 
-The key evaluation point is whether the model understood it should EXECUTE the code using the tool, not just provide code as text.
+Example 1 - Excellent:
+Question: Write Python code to generate first 10 Fibonacci numbers, then execute to verify
+Answer: [Tool: execute_python, Code: "fib=[0,1]\nfor i in range(8): fib.append(fib[-1]+fib[-2])\nprint(fib)", Output: [0,1,1,2,3,5,8,13,21,34]]
+JSON response:
+{
+  "tool_selection_score": 1.0,
+  "parameter_accuracy": 1.0,
+  "sequence_score": 1.0,
+  "overall_score": 1.0,
+  "reason": "Correct code executor tool used, valid Python with proper Fibonacci logic, code executed and output verified."
+}
+
+Example 2 - Failed:
+Question: Write Python code to generate first 10 Fibonacci numbers, then execute to verify
+Answer: Here's the code: ```python\nfib=[0,1]\nfor i in range(8): fib.append(fib[-1]+fib[-2])\nprint(fib)\n```\nThis will generate [0,1,1,2,3,5,8,13,21,34].
+JSON response:
+{
+  "tool_selection_score": 0.0,
+  "parameter_accuracy": 0.0,
+  "sequence_score": 0.0,
+  "overall_score": 0.0,
+  "reason": "No tool used, code provided as text only without execution or verification."
+}

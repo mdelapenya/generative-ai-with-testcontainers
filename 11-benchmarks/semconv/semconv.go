@@ -120,4 +120,5 @@ const (
 	MetricLLMToolSuccessRate       = "llm.tool.success_rate"
 	MetricLLMToolParamAccuracy     = "llm.tool.param_accuracy"
 	MetricLLMToolSelectionAccuracy = "llm.tool.selection_accuracy"
+	MetricLLMToolConvergence       = "llm.tool.convergence"
 )

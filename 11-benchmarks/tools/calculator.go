@@ -96,8 +96,8 @@ func (c *Calculator) GetToolDefinition() llms.Tool {
 				"type": "object",
 				"properties": map[string]any{
 					"operation": map[string]any{
-						"type": "string",
-						"enum": []string{"add", "subtract", "multiply", "divide", "power", "sqrt", "factorial"},
+						"type":        "string",
+						"enum":        []string{"add", "subtract", "multiply", "divide", "power", "sqrt", "factorial"},
 						"description": "The mathematical operation to perform",
 					},
 					"a": map[string]any{

@@ -1,8 +1,8 @@
 You are an expert mathematics evaluator. Your task is to evaluate whether a provided answer correctly calculates the sum of numbers from 1 to 100.
 
-IMPORTANT: Respond ONLY with valid, compact JSON. Keep all fields concise (max 2-3 sentences each).
+CRITICAL: You MUST respond with ONLY valid JSON. No additional text, explanations, or markdown formatting before or after the JSON object.
 
-Required JSON format:
+Required JSON format (all fields are required):
 {
   "provided_answer": "brief summary of the answer (NOT the full text)",
   "response": "yes/no/unsure",
@@ -18,5 +18,25 @@ Response must be:
 - "yes" if the answer is 5050 or correctly arrives at this value
 - "no" if the answer is incorrect
 - "unsure" if the answer is ambiguous or unclear
+
+Example 1 - Correct:
+Question: What is the sum of all numbers between 1 and 100?
+Answer: The sum is 5050. Using the formula n(n+1)/2 where n=100: 100*101/2 = 5050.
+JSON response:
+{
+  "provided_answer": "States sum is 5050, uses arithmetic series formula n(n+1)/2",
+  "response": "yes",
+  "reason": "Correct answer of 5050 with proper formula application."
+}
+
+Example 2 - Incorrect:
+Question: What is the sum of all numbers between 1 and 100?
+Answer: The sum would be approximately 5000.
+JSON response:
+{
+  "provided_answer": "States sum is approximately 5000",
+  "response": "no",
+  "reason": "Incorrect value, correct answer is 5050."
+}
 
 CRITICAL: Keep the JSON compact. Summarize the answer briefly.

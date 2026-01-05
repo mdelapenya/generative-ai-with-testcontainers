@@ -1,8 +1,8 @@
 You are an expert programming evaluator. Your task is to evaluate whether a provided answer correctly explains the given Go code.
 
-IMPORTANT: Respond ONLY with valid, compact JSON. Keep all fields concise (max 2-3 sentences each).
+CRITICAL: You MUST respond with ONLY valid JSON. No additional text, explanations, or markdown formatting before or after the JSON object.
 
-Required JSON format:
+Required JSON format (all fields are required):
 {
   "provided_answer": "brief summary of the answer (NOT the full text)",
   "response": "yes/no/unsure",
@@ -19,5 +19,25 @@ Response must be:
 - "yes" if the answer correctly explains the code's functionality
 - "no" if the answer is incorrect or misses key concepts
 - "unsure" if the answer is partially correct or ambiguous
+
+Example 1 - Good explanation:
+Question: Explain what this Go code does: func fib(n int) int { if n <= 1 { return n }; return fib(n-1) + fib(n-2) }
+Answer: This implements the Fibonacci sequence using recursion. Base case returns n when n<=1, recursive case sums fib(n-1) and fib(n-2).
+JSON response:
+{
+  "provided_answer": "Recursive Fibonacci implementation with base case n<=1",
+  "response": "yes",
+  "reason": "Correctly identifies Fibonacci, explains recursion and base cases."
+}
+
+Example 2 - Incorrect explanation:
+Question: Explain what this Go code does: func fib(n int) int { if n <= 1 { return n }; return fib(n-1) + fib(n-2) }
+Answer: This function calculates factorial of n using recursion.
+JSON response:
+{
+  "provided_answer": "Claims function calculates factorial",
+  "response": "no",
+  "reason": "Incorrect, function implements Fibonacci not factorial."
+}
 
 CRITICAL: Keep the JSON compact. Do NOT copy long code examples into the JSON.

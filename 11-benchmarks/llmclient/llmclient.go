@@ -267,13 +267,13 @@ type ToolResult struct {
 
 // ResponseWithTools contains the LLM response and metadata including tool execution info
 type ResponseWithTools struct {
-	*Response                // Embed the base Response
-	ToolCalls       []ToolResult
-	Iterations      int           // Number of LLM-tool roundtrips
-	TotalLatency    time.Duration // Total time including all tool executions
-	LLMLatency      time.Duration // LLM inference time only
-	ToolLatency     time.Duration // Tool execution time only
-	FinalContent    string        // Final synthesized response
+	*Response    // Embed the base Response
+	ToolCalls    []ToolResult
+	Iterations   int           // Number of LLM-tool roundtrips
+	TotalLatency time.Duration // Total time including all tool executions
+	LLMLatency   time.Duration // LLM inference time only
+	ToolLatency  time.Duration // Tool execution time only
+	FinalContent string        // Final synthesized response
 }
 
 // GenerateWithTools sends a prompt to the LLM with tools and iteratively executes tool calls
@@ -431,8 +431,8 @@ func (c *Client) GenerateWithTools(ctx context.Context, testCase string, systemP
 
 	return &ResponseWithTools{
 		Response: &Response{
-			Content:  "Maximum iterations reached without final answer",
-			Latency:  totalLatency,
+			Content: "Maximum iterations reached without final answer",
+			Latency: totalLatency,
 		},
 		ToolCalls:    toolResults,
 		Iterations:   iterations,
@@ -461,4 +461,22 @@ func executeToolCall(ctx context.Context, toolCall llms.ToolCall) (string, error
 	default:
 		return "", fmt.Errorf("unknown tool: %s", toolCall.FunctionCall.Name)
 	}
+}
+
+// GetCalculatorTool returns the calculator tool definition
+func GetCalculatorTool() llms.Tool {
+	calc := tools.NewCalculator()
+	return calc.GetToolDefinition()
+}
+
+// GetCodeExecutorTool returns the code executor tool definition
+func GetCodeExecutorTool() llms.Tool {
+	executor := tools.NewCodeExecutor()
+	return executor.GetToolDefinition()
+}
+
+// GetHTTPClientTool returns the HTTP client tool definition
+func GetHTTPClientTool() llms.Tool {
+	httpClient := tools.NewHTTPClient()
+	return httpClient.GetToolDefinition()
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/evaluator"
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/llmclient"
 	dmr "github.com/testcontainers/testcontainers-go/modules/dockermodelrunner"
+	"github.com/tmc/langchaingo/llms"
 )
 
 //go:embed testdata/fibonacci.go
@@ -165,6 +166,7 @@ type BenchmarkResult struct {
 	ToolIterationCount    int     // Number of LLM-tool iterations
 	ToolParamAccuracy     float64 // Tool parameter extraction accuracy (0.0-1.0)
 	ToolSelectionAccuracy float64 // Tool selection accuracy (0.0-1.0)
+	ToolConvergence       float64 // Convergence score (1.0 = optimal path)
 }
 
 // BenchmarkLLMs runs benchmarks for all models and test cases
@@ -286,12 +288,13 @@ func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model str
 				result.EvalResponse = evalResult.Response
 				result.EvalReason = evalResult.Reason
 			} else {
-				fmt.Printf("⚠️  Evaluation error for %s/%s/temp%.1f: %v\n", model, tc.Name, temp, evalErr)
+				// Log evaluation error to OTel backend instead of stdout
+				metricsCollector.LogEvaluationError(ctx, model, tc.Name, temp, evalErr)
 			}
 		}
 	} else {
-		// Log error for debugging (will appear in benchmark output)
-		fmt.Printf("❌ Error in %s/%s/temp%.1f: %v\n", model, tc.Name, temp, err)
+		// Log error to OTel backend instead of stdout
+		metricsCollector.LogBenchmarkError(ctx, model, tc.Name, temp, err)
 	}
 
 	return result
@@ -309,14 +312,14 @@ func isToolAssistedCase(name string) bool {
 }
 
 // getToolsForCase returns the tools available for a specific test case
-func getToolsForCase(name string) []interface{} {
+func getToolsForCase(name string) []llms.Tool {
 	switch name {
 	case "calculator-reasoning":
-		return []interface{}{llmclient.GetCalculatorTool()}
+		return []llms.Tool{llmclient.GetCalculatorTool()}
 	case "code-validation":
-		return []interface{}{llmclient.GetCodeExecutorTool()}
+		return []llms.Tool{llmclient.GetCodeExecutorTool()}
 	case "api-data-retrieval":
-		return []interface{}{llmclient.GetHTTPClientTool()}
+		return []llms.Tool{llmclient.GetHTTPClientTool()}
 	default:
 		return nil
 	}
@@ -366,12 +369,13 @@ func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, 
 				result.ToolParamAccuracy = toolEvalResult.ParameterAccuracy
 				result.ToolSelectionAccuracy = toolEvalResult.ToolSelectionScore
 			} else {
-				fmt.Printf("⚠️  Tool evaluation error for %s/%s/temp%.1f: %v\n", model, tc.Name, temp, toolEvalErr)
+				// Log tool evaluation error to OTel backend instead of stdout
+				metricsCollector.LogToolEvaluationError(ctx, model, tc.Name, temp, toolEvalErr)
 			}
 		}
 	} else {
-		// Log error for debugging (will appear in benchmark output)
-		fmt.Printf("❌ Error in %s/%s/temp%.1f: %v\n", model, tc.Name, temp, err)
+		// Log error to OTel backend instead of stdout
+		metricsCollector.LogBenchmarkError(ctx, model, tc.Name, temp, err)
 	}
 
 	return result
@@ -677,6 +681,7 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 	avgToolIterationCount := 0.0
 	avgToolParamAccuracy := 0.0
 	avgToolSelectionAccuracy := 0.0
+	avgToolConvergence := 0.0
 	toolSuccessRate := 1.0 // Default to 1.0 for non-tool cases
 
 	if toolMetricsCount > 0 {
@@ -686,12 +691,45 @@ func updateGauges(model, testCase string, temp float64, results []BenchmarkResul
 		avgToolSelectionAccuracy = totalToolSelectionAccuracy / float64(toolMetricsCount)
 		// Tool success rate = successful tool-assisted operations / total operations
 		toolSuccessRate = float64(toolMetricsCount) / float64(successCount)
+
+		// Calculate convergence score: measures how closely agent follows optimal path
+		// S_optimal = minimum tool calls across all runs
+		// Convergence = (Σ min(1, S_optimal / S_agent,i)) / N
+		sOptimal := -1
+		for _, r := range results {
+			if r.Success && r.ToolCallCount > 0 {
+				if sOptimal == -1 || r.ToolCallCount < sOptimal {
+					sOptimal = r.ToolCallCount
+				}
+			}
+		}
+
+		if sOptimal > 0 {
+			totalConvergence := 0.0
+			convergenceCount := 0
+			for _, r := range results {
+				if r.Success && r.ToolCallCount > 0 {
+					// Convergence for this run: min(1, S_optimal / S_agent)
+					// If agent uses optimal or fewer calls: convergence = 1.0
+					// If agent uses more calls: convergence = S_optimal / S_agent (< 1.0)
+					convergenceScore := float64(sOptimal) / float64(r.ToolCallCount)
+					if convergenceScore > 1.0 {
+						convergenceScore = 1.0
+					}
+					totalConvergence += convergenceScore
+					convergenceCount++
+				}
+			}
+			if convergenceCount > 0 {
+				avgToolConvergence = totalConvergence / float64(convergenceCount)
+			}
+		}
 	}
 
 	// nsPerOp is passed in from the Go benchmark framework (b.Elapsed() / b.N)
 	// Check if this is a tool-assisted case
 	if isToolAssistedCase(testCase) {
-		metricsCollector.UpdateAggregatesWithToolMetrics(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, avgToolCallCount, avgToolIterationCount, toolSuccessRate, avgToolParamAccuracy, avgToolSelectionAccuracy)
+		metricsCollector.UpdateAggregatesWithToolMetrics(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, avgToolCallCount, avgToolIterationCount, toolSuccessRate, avgToolParamAccuracy, avgToolSelectionAccuracy, avgToolConvergence)
 	} else {
 		metricsCollector.UpdateAggregates(model, testCase, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, avgTotalTokens, avgEvalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp)
 	}

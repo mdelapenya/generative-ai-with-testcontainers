@@ -36,8 +36,14 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
+// HandleLLMStart is called when LLM generation starts (new interface method)
+func (h *OTelCallbackHandler) HandleLLMStart(ctx context.Context, prompts []string) {
+	// Use HandleLLMGenerateContentStart for actual implementation
+	// This is a compatibility method for the new interface
+}
+
 // HandleLLMGenerateContentStart is called when LLM generation starts
-func (h *OTelCallbackHandler) HandleLLMGenerateContentStart(ctx context.Context, ms []llms.MessageContent) context.Context {
+func (h *OTelCallbackHandler) HandleLLMGenerateContentStart(ctx context.Context, ms []llms.MessageContent) {
 	ctx, _ = h.tracer.Start(ctx, "langchaingo.llm.generate.start",
 		trace.WithSpanKind(trace.SpanKindInternal),
 	)
@@ -65,12 +71,10 @@ func (h *OTelCallbackHandler) HandleLLMGenerateContentStart(ctx context.Context,
 			attribute.String(fmt.Sprintf("llm.message.%d.content", i), truncateString(content, 500)),
 		)
 	}
-
-	return ctx
 }
 
 // HandleLLMGenerateContentEnd is called when LLM generation completes
-func (h *OTelCallbackHandler) HandleLLMGenerateContentEnd(ctx context.Context, res *llms.ContentResponse) context.Context {
+func (h *OTelCallbackHandler) HandleLLMGenerateContentEnd(ctx context.Context, res *llms.ContentResponse) {
 	ctx, _ = h.tracer.Start(ctx, "langchaingo.llm.generate.end",
 		trace.WithSpanKind(trace.SpanKindInternal),
 	)
@@ -98,12 +102,10 @@ func (h *OTelCallbackHandler) HandleLLMGenerateContentEnd(ctx context.Context, r
 			span.SetAttributes(attribute.Int(semconv.AttrLLMUsageTotalTokens, totalTokens))
 		}
 	}
-
-	return ctx
 }
 
 // HandleLLMError is called when LLM generation fails
-func (h *OTelCallbackHandler) HandleLLMError(ctx context.Context, err error) context.Context {
+func (h *OTelCallbackHandler) HandleLLMError(ctx context.Context, err error) {
 	ctx, span := h.tracer.Start(ctx, "langchaingo.llm.error",
 		trace.WithSpanKind(trace.SpanKindInternal),
 	)
@@ -114,13 +116,11 @@ func (h *OTelCallbackHandler) HandleLLMError(ctx context.Context, err error) con
 	)
 	span.SetStatus(codes.Error, err.Error())
 	span.End()
-
-	return ctx
 }
 
 // HandleToolStart is called when a tool execution starts
 // This is KEY for tool calling observability
-func (h *OTelCallbackHandler) HandleToolStart(ctx context.Context, input string) context.Context {
+func (h *OTelCallbackHandler) HandleToolStart(ctx context.Context, input string) {
 	startTime := time.Now()
 	ctx = context.WithValue(ctx, "tool_start_time", startTime)
 
@@ -144,13 +144,11 @@ func (h *OTelCallbackHandler) HandleToolStart(ctx context.Context, input string)
 	span.SetAttributes(
 		attribute.String(semconv.AttrToolInput, truncateString(input, 500)),
 	)
-
-	return ctx
 }
 
 // HandleToolEnd is called when a tool execution completes
 // This is KEY for tool calling observability
-func (h *OTelCallbackHandler) HandleToolEnd(ctx context.Context, output string) context.Context {
+func (h *OTelCallbackHandler) HandleToolEnd(ctx context.Context, output string) {
 	ctx, _ = h.tracer.Start(ctx, "langchaingo.tool.end",
 		trace.WithSpanKind(trace.SpanKindInternal),
 	)
@@ -168,13 +166,11 @@ func (h *OTelCallbackHandler) HandleToolEnd(ctx context.Context, output string) 
 	span.SetAttributes(
 		attribute.String(semconv.AttrToolOutput, truncateString(output, 500)),
 	)
-
-	return ctx
 }
 
 // HandleToolError is called when a tool execution fails
 // This is KEY for tool calling observability
-func (h *OTelCallbackHandler) HandleToolError(ctx context.Context, err error) context.Context {
+func (h *OTelCallbackHandler) HandleToolError(ctx context.Context, err error) {
 	ctx, span := h.tracer.Start(ctx, "langchaingo.tool.error",
 		trace.WithSpanKind(trace.SpanKindInternal),
 	)
@@ -185,54 +181,51 @@ func (h *OTelCallbackHandler) HandleToolError(ctx context.Context, err error) co
 	)
 	span.SetStatus(codes.Error, err.Error())
 	span.End()
-
-	return ctx
 }
 
 // HandleStreamingFunc is called for streaming responses
 // We skip this per user preference (no span per streaming chunk)
-func (h *OTelCallbackHandler) HandleStreamingFunc(ctx context.Context, chunk []byte) context.Context {
+func (h *OTelCallbackHandler) HandleStreamingFunc(ctx context.Context, chunk []byte) {
 	// No-op: Skip streaming chunks to avoid span explosion
-	return ctx
 }
 
 // Stub methods for chains/agents/text/retriever (9 methods)
 // These are required by the callbacks.Handler interface but not used in this implementation
 
-func (h *OTelCallbackHandler) HandleChainStart(ctx context.Context, inputs map[string]any) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleChainStart(ctx context.Context, inputs map[string]any) {
+	// No-op for chain start events
 }
 
-func (h *OTelCallbackHandler) HandleChainEnd(ctx context.Context, outputs map[string]any) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleChainEnd(ctx context.Context, outputs map[string]any) {
+	// No-op for chain end events
 }
 
-func (h *OTelCallbackHandler) HandleChainError(ctx context.Context, err error) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleChainError(ctx context.Context, err error) {
+	// No-op for chain error events
 }
 
-func (h *OTelCallbackHandler) HandleAgentAction(ctx context.Context, action schema.AgentAction) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleAgentAction(ctx context.Context, action schema.AgentAction) {
+	// No-op for agent action events
 }
 
-func (h *OTelCallbackHandler) HandleAgentFinish(ctx context.Context, finish schema.AgentFinish) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleAgentFinish(ctx context.Context, finish schema.AgentFinish) {
+	// No-op for agent finish events
 }
 
-func (h *OTelCallbackHandler) HandleText(ctx context.Context, text string) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleText(ctx context.Context, text string) {
+	// No-op for text events
 }
 
-func (h *OTelCallbackHandler) HandleRetrieverStart(ctx context.Context, query string) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleRetrieverStart(ctx context.Context, query string) {
+	// No-op for retriever start events
 }
 
-func (h *OTelCallbackHandler) HandleRetrieverEnd(ctx context.Context, documents []schema.Document) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleRetrieverEnd(ctx context.Context, query string, documents []schema.Document) {
+	// No-op for retriever end events
 }
 
-func (h *OTelCallbackHandler) HandleRetrieverError(ctx context.Context, err error) context.Context {
-	return ctx
+func (h *OTelCallbackHandler) HandleRetrieverError(ctx context.Context, err error) {
+	// No-op for retriever error events
 }
 
 // Ensure OTelCallbackHandler implements callbacks.Handler

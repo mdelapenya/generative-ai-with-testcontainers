@@ -199,6 +199,7 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 	promToolSuccessRate := semconv.ToPrometheusMetricName(semconv.MetricLLMToolSuccessRate)
 	promToolParamAccuracy := semconv.ToPrometheusMetricName(semconv.MetricLLMToolParamAccuracy)
 	promToolSelectionAccuracy := semconv.ToPrometheusMetricName(semconv.MetricLLMToolSelectionAccuracy)
+	promToolConvergence := semconv.ToPrometheusMetricName(semconv.MetricLLMToolConvergence)
 
 	dashboard := map[string]interface{}{
 		"dashboard": map[string]interface{}{
@@ -330,9 +331,11 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 					map[string]interface{}{"min": 0, "max": 1}),
 				createSimpleTimeseriesPanel(20, "Tool Selection Accuracy", promToolSelectionAccuracy, 12, 64, 12, 8, "percentunit",
 					map[string]interface{}{"min": 0, "max": 1}),
+				createSimpleTimeseriesPanel(21, "Tool Convergence (Path Efficiency)", promToolConvergence, 0, 72, 24, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1}),
 
 				// ns/op metric (Go benchmark) - moved to bottom
-				createSimpleTimeseriesPanel(21, "ns/op (Go Benchmark)", promNsPerOp, 0, 72, 24, 8, "ns", nil),
+				createSimpleTimeseriesPanel(22, "ns/op (Go Benchmark)", promNsPerOp, 0, 80, 24, 8, "ns", nil),
 			},
 		},
 		"overwrite": true,

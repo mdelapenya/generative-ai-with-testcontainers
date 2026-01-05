@@ -63,7 +63,7 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 
 - `gpu.go`: Samples GPU metrics with auto-detection for NVIDIA (`nvidia-smi`) and Apple Silicon (`ioreg`). See [GPU Metrics](#gpu-metrics) section below for details.
 
-- `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 21 panels:
+- `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 22 panels:
   1. **Latency Percentiles (p50/p95)** - Overall response time metrics
   2. **Latency Histogram with Exemplars** - Response time distribution with drill-down to traces
   3. **Prompt Evaluation Time (p50/p95)** - Time to first token metrics
@@ -75,14 +75,15 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
   9. **GPU Memory** (Optional) - Memory consumption
   10. **Evaluator Score** - Quality assessment with drill-down to Loki logs
   11. **Evaluator Pass Rate** - Quality pass rate with drill-down to Loki logs
-  12-17. **Tool Calling Metrics** (NEW) - Only populated for tool-assisted test cases:
+  12-18. **Tool Calling Metrics** (NEW) - Only populated for tool-assisted test cases:
       - **Tool Call Latency** - Execution time histogram per tool
       - **Tool Calls per Operation** - Average calls per benchmark
       - **LLM-Tool Iterations** - Roundtrips between LLM and tools
       - **Tool Success Rate** - Tool execution success ratio
       - **Tool Parameter Accuracy** - Parameter extraction correctness (0.0-1.0)
       - **Tool Selection Accuracy** - Correct tool choice rate (0.0-1.0)
-  18. **ns/op (Go Benchmark)** - Go benchmark framework metric
+      - **Tool Convergence (Path Efficiency)** - How efficiently models follow optimal path (1.0 = optimal)
+  19. **ns/op (Go Benchmark)** - Go benchmark framework metric
 
   The dashboard includes template variables for filtering by model, test case, and temperature. The dashboard uses a fixed UID (`llm-bench-dmr-tc`) to ensure it is **automatically updated** on each benchmark run without creating duplicates.
 
@@ -124,13 +125,14 @@ The implementation includes comprehensive observability for tool calling:
 - Records tool names, inputs, outputs, duration in span attributes
 - Creates parent-child span hierarchy visible in Grafana Tempo
 
-**Tool Metrics** (6 new metrics):
+**Tool Metrics** (7 new metrics):
 - Tool call latency histogram: Execution time per tool
 - Tool calls per operation: How many tools models invoke
 - LLM-tool iterations: Back-and-forth roundtrips
 - Tool success rate: Execution success ratio
 - Tool parameter accuracy: Evaluator-assessed correctness (0.0-1.0)
 - Tool selection accuracy: Did model choose the right tool? (0.0-1.0)
+- **Tool convergence** (NEW): Path efficiency score measuring how closely the agent follows the optimal path (1.0 = optimal)
 
 **Tool Parameter Evaluation**:
 The evaluator agent (`evaluator/evaluator.go`) assesses not just response quality, but also tool calling accuracy:
@@ -139,6 +141,25 @@ The evaluator agent (`evaluator/evaluator.go`) assesses not just response qualit
 - Call sequence: Are operations performed in logical order?
 
 Evaluation criteria stored in `evaluator/testdata/evaluation/tool-parameter-extraction/` with system prompts and reference files for each test case.
+
+**Tool Convergence Metric**:
+The convergence metric measures how efficiently models follow the optimal path when solving multi-step tasks with tools:
+
+**Formula**: `Convergence = (Σ min(1, S_optimal / S_agent,i)) / N`
+- `S_optimal` = Minimum tool calls across all runs for a test case
+- `S_agent,i` = Tool calls in run i
+- Score of 1.0 = Agent takes optimal path 100% of the time
+
+**Examples** (calculator-reasoning test case with optimal path = 4 tool calls):
+- Model A: 4 calls every run → convergence = 1.0 (perfect efficiency)
+- Model B: 6 calls on average → convergence = 0.67 (less efficient, extra operations)
+- Model C: 3 calls → convergence = 1.0 (optimal or skipped necessary step)
+
+**Why It Matters**:
+- Identifies models that make unnecessary tool calls (reduced efficiency, higher latency)
+- Helps compare models on path optimization, not just accuracy
+- Complements accuracy metrics: A model can be accurate but inefficient
+- Important for production: Fewer tool calls = lower latency and costs
 
 ### Model Compatibility
 
