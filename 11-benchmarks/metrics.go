@@ -30,6 +30,12 @@ type AggregateMetrics struct {
 	TokensPerSec       float64 // Total TPS: (input + output) / TAT
 	OutputTokensPerSec float64 // Output TPS: output tokens / generation time
 	NsPerOp            float64 // Nanoseconds per operation (Go benchmark metric)
+	// Tool calling metrics
+	ToolCallCount         float64 // Average tool calls per operation
+	ToolIterationCount    float64 // Average LLM-tool iterations per operation
+	ToolSuccessRate       float64 // Tool call success rate (0.0-1.0)
+	ToolParamAccuracy     float64 // Tool parameter extraction accuracy (0.0-1.0)
+	ToolSelectionAccuracy float64 // Correct tool selection rate (0.0-1.0)
 }
 
 // MetricsCollector collects and records LLM benchmark metrics
@@ -40,6 +46,7 @@ type MetricsCollector struct {
 	latencyHistogram        metric.Float64Histogram
 	ttftHistogram           metric.Float64Histogram
 	promptEvalTimeHistogram metric.Float64Histogram
+	toolCallLatencyHistogram metric.Float64Histogram
 
 	// Store aggregate metrics per model/case/temp combination
 	aggregates map[string]*AggregateMetrics
@@ -88,12 +95,25 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		return nil, fmt.Errorf("failed to create prompt eval time histogram: %w", err)
 	}
 
+	// Tool call latency histogram (smaller buckets for faster tool calls)
+	toolCallBuckets := []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500}
+	toolCallLatencyHistogram, err := meter.Float64Histogram(
+		semconv.MetricLLMToolCallLatency,
+		metric.WithDescription("Tool call execution latency"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(toolCallBuckets...),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tool call latency histogram: %w", err)
+	}
+
 	mc := &MetricsCollector{
-		meter:                   meter,
-		latencyHistogram:        latencyHistogram,
-		ttftHistogram:           ttftHistogram,
-		promptEvalTimeHistogram: promptEvalTimeHistogram,
-		aggregates:              make(map[string]*AggregateMetrics),
+		meter:                    meter,
+		latencyHistogram:         latencyHistogram,
+		ttftHistogram:            ttftHistogram,
+		promptEvalTimeHistogram:  promptEvalTimeHistogram,
+		toolCallLatencyHistogram: toolCallLatencyHistogram,
+		aggregates:               make(map[string]*AggregateMetrics),
 	}
 
 	// Register observable gauges with callbacks that emit metrics with labels
@@ -355,6 +375,97 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		return nil, fmt.Errorf("failed to create gpu memory gauge: %w", err)
 	}
 
+	// Tool call metrics gauges
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMToolCallCount,
+		metric.WithDescription("Average tool calls per operation"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.ToolCallCount, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create tool call count gauge: %w", err)
+	}
+
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMIterationCount,
+		metric.WithDescription("Average LLM-tool iterations per operation"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.ToolIterationCount, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create tool iteration count gauge: %w", err)
+	}
+
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMToolSuccessRate,
+		metric.WithDescription("Tool call success rate"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.ToolSuccessRate, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create tool success rate gauge: %w", err)
+	}
+
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMToolParamAccuracy,
+		metric.WithDescription("Tool parameter extraction accuracy (0.0-1.0)"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.ToolParamAccuracy, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create tool param accuracy gauge: %w", err)
+	}
+
+	if _, err := meter.Float64ObservableGauge(
+		semconv.MetricLLMToolSelectionAccuracy,
+		metric.WithDescription("Correct tool selection rate (0.0-1.0)"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.ToolSelectionAccuracy, metric.WithAttributes(attrs...))
+			}
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("failed to create tool selection accuracy gauge: %w", err)
+	}
+
 	return mc, nil
 }
 
@@ -419,6 +530,27 @@ func (mc *MetricsCollector) RecordPromptEvalTime(ctx context.Context, promptEval
 	mc.promptEvalTimeHistogram.Record(ctx, promptEvalTimeMs, metric.WithAttributes(attrs...))
 }
 
+// RecordToolCallLatency records a tool call latency measurement with exemplar support
+func (mc *MetricsCollector) RecordToolCallLatency(ctx context.Context, latency time.Duration, toolName, model, testCase string, temp float64) {
+	span := trace.SpanFromContext(ctx)
+	traceID := span.SpanContext().TraceID().String()
+	spanID := span.SpanContext().SpanID().String()
+
+	// Record in milliseconds for better readability in dashboards
+	latencyMs := float64(latency.Milliseconds())
+
+	attrs := []attribute.KeyValue{
+		attribute.String(semconv.AttrToolName, toolName),
+		attribute.String(semconv.AttrModel, model),
+		attribute.String(semconv.AttrCase, testCase),
+		attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", temp)),
+		attribute.String(semconv.AttrTraceID, traceID),
+		attribute.String(semconv.AttrSpanID, spanID),
+	}
+
+	mc.toolCallLatencyHistogram.Record(ctx, latencyMs, metric.WithAttributes(attrs...))
+}
+
 // UpdateAggregates updates the aggregate metrics (percentiles, success rate, etc.) for a specific model/case/temp combination
 func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp float64) {
 	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
@@ -440,6 +572,41 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 		TokensPerSec:       tokensPerSec,
 		OutputTokensPerSec: outputTokensPerSec,
 		NsPerOp:            nsPerOp,
+		// Tool metrics (will be set to 0 for non-tool cases)
+		ToolCallCount:         0,
+		ToolIterationCount:    0,
+		ToolSuccessRate:       0,
+		ToolParamAccuracy:     0,
+		ToolSelectionAccuracy: 0,
+	}
+}
+
+// UpdateAggregatesWithToolMetrics updates the aggregate metrics including tool-specific metrics
+func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, toolCallCount, toolIterationCount, toolSuccessRate, toolParamAccuracy, toolSelectionAccuracy float64) {
+	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
+
+	mc.aggregates[key] = &AggregateMetrics{
+		Model:                 model,
+		TestCase:              testCase,
+		Temp:                  temp,
+		LatencyP50:            p50,
+		LatencyP95:            p95,
+		TTFTP50:               ttftP50,
+		TTFTP95:               ttftP95,
+		PromptEvalTimeP50:     promptEvalP50,
+		PromptEvalTimeP95:     promptEvalP95,
+		SuccessRate:           successRate,
+		TokensPerOp:           tokensPerOp,
+		EvalScore:             evalScore,
+		EvalPassRate:          evalPassRate,
+		TokensPerSec:          tokensPerSec,
+		OutputTokensPerSec:    outputTokensPerSec,
+		NsPerOp:               nsPerOp,
+		ToolCallCount:         toolCallCount,
+		ToolIterationCount:    toolIterationCount,
+		ToolSuccessRate:       toolSuccessRate,
+		ToolParamAccuracy:     toolParamAccuracy,
+		ToolSelectionAccuracy: toolSelectionAccuracy,
 	}
 }
 
