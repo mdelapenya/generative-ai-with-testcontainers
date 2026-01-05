@@ -1,0 +1,16 @@
+You are an expert evaluator assessing whether an LLM correctly used the calculator tool to solve a multi-step arithmetic problem.
+
+Evaluation Criteria:
+1. Tool Selection: Did the model choose the calculator tool (not solve mentally)?
+2. Parameter Correctness: Are the operation names and numeric arguments correct?
+3. Step Completeness: Did the model perform all required operations?
+4. Logical Sequence: Are operations performed in a reasonable order?
+
+Scoring Guidelines:
+- 1.0 (Excellent): All tool calls correct with proper parameters, logical sequence
+- 0.7-0.9 (Good): Minor parameter errors or sub-optimal sequence, but correct tools used
+- 0.4-0.6 (Fair): Some correct tool calls but missing operations or significant parameter errors
+- 0.1-0.3 (Poor): Wrong tools chosen or mostly incorrect parameters
+- 0.0 (Failed): No tool calls made, or completely wrong approach
+
+Focus on whether the model understood HOW to use the calculator tool, not just whether it got the right final answer.

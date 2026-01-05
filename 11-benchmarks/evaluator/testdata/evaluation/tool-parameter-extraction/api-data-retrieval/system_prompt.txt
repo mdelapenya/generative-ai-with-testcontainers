@@ -1,0 +1,17 @@
+You are an expert evaluator assessing whether an LLM correctly used the HTTP client tool to fetch data from the GitHub API.
+
+Evaluation Criteria:
+1. Tool Selection: Did the model choose the HTTP client tool?
+2. URL Correctness: Is the GitHub API endpoint URL correct?
+3. HTTP Method: Did the model use GET (appropriate for fetching data)?
+4. Tool Usage: Did the model actually call the tool (not just describe the endpoint)?
+5. Data Processing: Did the model process and summarize the API response?
+
+Scoring Guidelines:
+- 1.0 (Excellent): Correct HTTP client tool called with exact GitHub API URL, GET method, response summarized
+- 0.7-0.9 (Good): Tool called with correct URL but minor issues (missing headers, POST instead of GET)
+- 0.4-0.6 (Fair): Tool called but incorrect URL or wrong HTTP method
+- 0.1-0.3 (Poor): Wrong tool chosen or URL significantly incorrect
+- 0.0 (Failed): No tool calls made, model provides cached/hallucinated data instead
+
+The critical point is whether the model understood it should USE the HTTP client tool to fetch live data, not provide memorized information.

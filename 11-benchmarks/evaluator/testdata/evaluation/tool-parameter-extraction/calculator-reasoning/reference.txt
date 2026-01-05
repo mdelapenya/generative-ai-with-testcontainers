@@ -1,0 +1,26 @@
+Expected Tool Calls for: (125 * 47) + (980 / 20) - 156
+
+Operation Breakdown:
+1. multiply(125, 47) → 5875
+2. divide(980, 20) → 49
+3. add(5875, 49) → 5924
+4. subtract(5924, 156) → 5768
+
+Alternative Valid Sequences:
+- Operations can be performed in different orders (e.g., divide first, then multiply)
+- Intermediate results may vary based on sequence
+- Final answer should be 5768
+
+Key Validation Points:
+✓ Tool name: "calculator" (or similar calculator tool)
+✓ Operation parameter: One of ["multiply", "divide", "add", "subtract"]
+✓ Numeric parameters: Match the original expression values
+✓ Four distinct calculator calls (one per operation)
+✓ Results feed into subsequent operations correctly
+
+Common Errors to Flag:
+✗ Model solves mentally without calling calculator
+✗ Combines multiple operations into one call
+✗ Incorrect operation names (e.g., "times" instead of "multiply")
+✗ Swapped numeric arguments (e.g., divide(20, 980) instead of divide(980, 20))
+✗ Missing operations (only 2-3 calls instead of 4)

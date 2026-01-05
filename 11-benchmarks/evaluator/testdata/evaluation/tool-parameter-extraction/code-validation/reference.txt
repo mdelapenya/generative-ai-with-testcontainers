@@ -1,0 +1,32 @@
+Expected Tool Call for: Generate first 10 Fibonacci numbers
+
+Tool: code_executor (or execute_python, python_executor)
+Expected Behavior:
+1. Model generates Python code for Fibonacci sequence
+2. Model calls code executor tool with the generated code
+3. Model validates execution output
+
+Expected Fibonacci Sequence (first 10):
+0, 1, 1, 2, 3, 5, 8, 13, 21, 34
+(Or starting from 1: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55)
+
+Valid Python Approaches:
+✓ Iterative loop (for/while)
+✓ Recursive function
+✓ Generator function
+✓ List comprehension
+
+Key Validation Points:
+✓ Tool name: "code_executor" or "execute_python" or similar
+✓ Code parameter: Valid Python code as string
+✓ Code contains Fibonacci logic (sequence where each number = sum of previous two)
+✓ Code produces 10 Fibonacci numbers
+✓ Tool is actually called (not just code provided in text)
+
+Common Errors to Flag:
+✗ Model writes code but doesn't execute it via tool
+✗ Code has syntax errors (missing colons, indentation issues)
+✗ Wrong sequence generated (not Fibonacci)
+✗ Code generates fewer than 10 numbers
+✗ Code doesn't print/return results
+✗ Tool not called at all

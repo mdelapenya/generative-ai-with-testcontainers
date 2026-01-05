@@ -1,0 +1,35 @@
+Expected Tool Call for: Fetch testcontainers-go repository info from GitHub API
+
+Tool: http_client (or http_get, fetch, api_call)
+Expected Parameters:
+- URL: "https://api.github.com/repos/testcontainers/testcontainers-go"
+- Method: "GET" (optional if tool defaults to GET)
+- Headers: Optional (Accept: application/vnd.github+json is best practice but not required)
+
+Key Validation Points:
+✓ Tool name: "http_client" or "http_get" or similar HTTP/API tool
+✓ URL parameter: Exact match "https://api.github.com/repos/testcontainers/testcontainers-go"
+✓ HTTP method: GET (if specified)
+✓ Tool is actually called (not just URL mentioned in text)
+✓ Model processes the API response data
+✓ Model summarizes key repository details (stars, description, language, etc.)
+
+Common Errors to Flag:
+✗ Model provides information without calling the tool (hallucinated data)
+✗ Incorrect URL format (missing /repos/, wrong organization/repo name)
+✗ Wrong HTTP method (POST, PUT, DELETE instead of GET)
+✗ Tool not called at all
+✗ Wrong API endpoint (e.g., search API instead of repos API)
+✗ Incomplete URL (missing https:// or github.com)
+
+API Response Fields (for validation):
+The GitHub API returns JSON with fields like:
+- name: "testcontainers-go"
+- full_name: "testcontainers/testcontainers-go"
+- description: Repository description
+- language: "Go"
+- stargazers_count: Number of stars
+- forks_count: Number of forks
+- open_issues_count: Number of open issues
+
+A good response should reference actual API data, not generic repository information.
