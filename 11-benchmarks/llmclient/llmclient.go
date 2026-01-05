@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/callbacks"
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/tools"
 	"github.com/tmc/langchaingo/llms"
@@ -54,6 +55,7 @@ func NewClient(endpoint, model string) (*Client, error) {
 		openai.WithBaseURL(endpoint),
 		openai.WithModel(model),
 		openai.WithToken(apiKey),
+		openai.WithCallback(callbacks.NewOTelCallbackHandler()),
 	}
 
 	llm, err := openai.New(opts...)
