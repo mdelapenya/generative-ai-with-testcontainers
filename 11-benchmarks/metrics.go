@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
@@ -52,7 +53,8 @@ type MetricsCollector struct {
 	toolCallLatencyHistogram metric.Float64Histogram
 
 	// Store aggregate metrics per model/case/temp combination
-	aggregates map[string]*AggregateMetrics
+	aggregates   map[string]*AggregateMetrics
+	aggregatesMu sync.RWMutex // Protects aggregates map for concurrent access
 
 	// GPU metrics
 	gpuUtilization float64
@@ -124,6 +126,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMLatencyP50,
 		metric.WithDescription(semconv.DescLLMLatencyP50),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -142,6 +146,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMLatencyP95,
 		metric.WithDescription(semconv.DescLLMLatencyP95),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -160,6 +166,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMTTFTP50,
 		metric.WithDescription(semconv.DescLLMTTFTP50),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -178,6 +186,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMTTFTP95,
 		metric.WithDescription(semconv.DescLLMTTFTP95),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -196,6 +206,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMPromptEvalTimeP50,
 		metric.WithDescription(semconv.DescLLMPromptEvalTimeP50),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -214,6 +226,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMPromptEvalTimeP95,
 		metric.WithDescription(semconv.DescLLMPromptEvalTimeP95),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -232,6 +246,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMSuccessRate,
 		metric.WithDescription(semconv.DescLLMSuccessRate),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -250,6 +266,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMTokensPerOp,
 		metric.WithDescription(semconv.DescLLMTokensPerOp),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -268,6 +286,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMEvalScore,
 		metric.WithDescription(semconv.DescLLMEvalScore),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -286,6 +306,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMEvalPassRate,
 		metric.WithDescription(semconv.DescLLMEvalPassRate),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -304,6 +326,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMTokensPerSecond,
 		metric.WithDescription(semconv.DescLLMTokensPerSecond),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -322,6 +346,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMOutputTokensPerSecond,
 		metric.WithDescription(semconv.DescLLMOutputTokensPerSecond),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -340,6 +366,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMNsPerOp,
 		metric.WithDescription(semconv.DescLLMNsPerOp),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -383,6 +411,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMToolCallCount,
 		metric.WithDescription("Average tool calls per operation"),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -401,6 +431,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMIterationCount,
 		metric.WithDescription("Average LLM-tool iterations per operation"),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -419,6 +451,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMToolSuccessRate,
 		metric.WithDescription("Tool call success rate"),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -437,6 +471,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMToolParamAccuracy,
 		metric.WithDescription("Tool parameter extraction accuracy (0.0-1.0)"),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -455,6 +491,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMToolSelectionAccuracy,
 		metric.WithDescription("Correct tool selection rate (0.0-1.0)"),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -473,6 +511,8 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		semconv.MetricLLMToolConvergence,
 		metric.WithDescription("Tool calling path convergence score (1.0 = optimal path)"),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
 			for _, agg := range mc.aggregates {
 				attrs := []attribute.KeyValue{
 					attribute.String(semconv.AttrModel, agg.Model),
@@ -576,6 +616,8 @@ func (mc *MetricsCollector) RecordToolCallLatency(ctx context.Context, latency t
 func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp float64) {
 	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
 
+	mc.aggregatesMu.Lock()
+	defer mc.aggregatesMu.Unlock()
 	mc.aggregates[key] = &AggregateMetrics{
 		Model:              model,
 		TestCase:           testCase,
@@ -606,6 +648,8 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase string, temp, p50, p95, ttftP50, ttftP95, promptEvalP50, promptEvalP95, successRate, tokensPerOp, evalScore, evalPassRate, tokensPerSec, outputTokensPerSec, nsPerOp, toolCallCount, toolIterationCount, toolSuccessRate, toolParamAccuracy, toolSelectionAccuracy, toolConvergence float64) {
 	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
 
+	mc.aggregatesMu.Lock()
+	defer mc.aggregatesMu.Unlock()
 	mc.aggregates[key] = &AggregateMetrics{
 		Model:                 model,
 		TestCase:              testCase,
