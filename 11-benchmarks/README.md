@@ -75,7 +75,7 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
   9. **GPU Memory** (Optional) - Memory consumption
   10. **Evaluator Score** - Quality assessment with drill-down to Loki logs
   11. **Evaluator Pass Rate** - Quality pass rate with drill-down to Loki logs
-  12-18. **Tool Calling Metrics** (NEW) - Only populated for tool-assisted test cases:
+  12-18. **Tool Calling Metrics** - Only populated for tool-assisted test cases:
       - **Tool Call Latency** - Execution time histogram per tool
       - **Tool Calls per Operation** - Average calls per benchmark
       - **LLM-Tool Iterations** - Roundtrips between LLM and tools
@@ -132,7 +132,7 @@ The implementation includes comprehensive observability for tool calling:
 - Tool success rate: Execution success ratio
 - Tool parameter accuracy: Evaluator-assessed correctness (0.0-1.0)
 - Tool selection accuracy: Did model choose the right tool? (0.0-1.0)
-- **Tool convergence** (NEW): Path efficiency score measuring how closely the agent follows the optimal path (1.0 = optimal)
+- Tool convergence: Path efficiency score measuring how closely the agent follows the optimal path (1.0 = optimal)
 
 **Tool Parameter Evaluation**:
 The evaluator agent (`evaluator/evaluator.go`) assesses not just response quality, but also tool calling accuracy:
