@@ -299,15 +299,15 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				// Evaluator metrics with data links to Loki logs
 				// IMPORTANT: These metrics show aggregated average scores calculated from multiple benchmark iterations.
 				// Each data point represents the mean evaluator score across all iterations for that model/test_case combination,
-				// collected over the metric export interval (5s). Clicking a point shows individual evaluation logs within ±30s
-				// that contributed to calculating that aggregate value. You'll see multiple log entries (one per benchmark iteration)
+				// collected over the metric export interval (5s). Clicking a point shows individual evaluation logs within the
+				// dashboard time window. You'll see multiple log entries (one per benchmark iteration)
 				// with individual scores (0.0, 0.5, or 1.0) and detailed reasoning from the evaluator LLM.
 				createSimpleTimeseriesPanelWithLinks(12, "Evaluator Score", promEvalScore, 0, 40, 12, 8, "short",
 					map[string]interface{}{"min": 0, "max": 1},
 					[]map[string]interface{}{
 						{
-							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case}, ±30s window)",
-							"url":   "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} | scope_name=`evaluator` | test_case=`${__field.labels.case}`\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__value.time:date:iso}-30s\",\"to\":\"${__value.time:date:iso}+30s\"}}",
+							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case})",
+							"url":   "/explore?orgId=1&from=$__from&to=$__to&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} |= \\\"scope_name\\\" |= \\\"evaluator\\\" | json | test_case=\\\"${__field.labels.case}\\\"\",\"queryType\":\"range\"}]}",
 						},
 					},
 				),
@@ -315,8 +315,8 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 					map[string]interface{}{"min": 0, "max": 1},
 					[]map[string]interface{}{
 						{
-							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case}, ±30s window)",
-							"url":   "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} | scope_name=`evaluator` | test_case=`${__field.labels.case}`\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__value.time:date:iso}-30s\",\"to\":\"${__value.time:date:iso}+30s\"}}",
+							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case})",
+							"url":   "/explore?orgId=1&from=$__from&to=$__to&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} |= \\\"scope_name\\\" |= \\\"evaluator\\\" | json | test_case=\\\"${__field.labels.case}\\\"\",\"queryType\":\"range\"}]}",
 						},
 					},
 				),
