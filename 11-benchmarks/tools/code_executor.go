@@ -98,7 +98,6 @@ func (c *CodeExecutor) executePythonCode(ctx context.Context, code string) (stri
 		Cmd:   []string{"python", "-c", code},
 		WaitingFor: wait.ForExit().
 			WithExitTimeout(c.timeout),
-		AutoRemove: true, // Clean up container after execution
 	}
 
 	// Start the container
