@@ -282,7 +282,7 @@ func runSingleBenchmark(ctx context.Context, client *llmclient.Client, model str
 
 		// Evaluate the response using the evaluator agent
 		if evaluatorAgent != nil {
-			evalResult, evalErr := evaluateResponse(ctx, tc.Name, tc.UserPrompt, resp.Content)
+			evalResult, evalErr := evaluateResponse(ctx, model, temp, tc.Name, tc.UserPrompt, resp.Content)
 			if evalErr == nil {
 				result.EvalScore = evalResult.Score
 				result.EvalResponse = evalResult.Response
@@ -354,7 +354,7 @@ func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, 
 
 		// Evaluate the response using the evaluator agent
 		if evaluatorAgent != nil {
-			evalResult, evalErr := evaluateResponse(ctx, tc.Name, tc.UserPrompt, resp.Content)
+			evalResult, evalErr := evaluateResponse(ctx, model, temp, tc.Name, tc.UserPrompt, resp.Content)
 			if evalErr == nil {
 				result.EvalScore = evalResult.Score
 				result.EvalResponse = evalResult.Response
@@ -364,7 +364,7 @@ func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, 
 			}
 
 			// Evaluate tool parameter extraction accuracy
-			toolEvalResult, toolEvalErr := evaluateToolCalls(ctx, tc.Name, tc.UserPrompt, resp.Content)
+			toolEvalResult, toolEvalErr := evaluateToolCalls(ctx, model, temp, tc.Name, tc.UserPrompt, resp.Content)
 			if toolEvalErr == nil {
 				result.ToolParamAccuracy = toolEvalResult.ParameterAccuracy
 				result.ToolSelectionAccuracy = toolEvalResult.ToolSelectionScore
@@ -382,7 +382,7 @@ func runSingleBenchmarkWithTools(ctx context.Context, client *llmclient.Client, 
 }
 
 // evaluateResponse uses the evaluator agent to assess response quality
-func evaluateResponse(ctx context.Context, testCaseName string, question string, answer string) (*evaluator.EvaluationResult, error) {
+func evaluateResponse(ctx context.Context, model string, temperature float64, testCaseName string, question string, answer string) (*evaluator.EvaluationResult, error) {
 	criteria := evaluator.GetCriteria()
 	evalCriteria, ok := criteria[testCaseName]
 	if !ok {
@@ -393,11 +393,11 @@ func evaluateResponse(ctx context.Context, testCaseName string, question string,
 	agent := evaluator.NewAgent(evaluatorAgent, evalCriteria.SystemPrompt)
 
 	// Evaluate the response
-	return agent.Evaluate(ctx, testCaseName, question, answer, evalCriteria.Reference)
+	return agent.Evaluate(ctx, model, temperature, testCaseName, question, answer, evalCriteria.Reference)
 }
 
 // evaluateToolCalls uses the evaluator agent to assess tool calling accuracy
-func evaluateToolCalls(ctx context.Context, testCaseName string, question string, answer string) (*evaluator.ToolEvaluationResult, error) {
+func evaluateToolCalls(ctx context.Context, model string, temperature float64, testCaseName string, question string, answer string) (*evaluator.ToolEvaluationResult, error) {
 	criteria := evaluator.GetCriteria()
 	evalCriteria, ok := criteria[testCaseName]
 	if !ok {
@@ -408,7 +408,7 @@ func evaluateToolCalls(ctx context.Context, testCaseName string, question string
 	agent := evaluator.NewAgent(evaluatorAgent, evalCriteria.SystemPrompt)
 
 	// Evaluate tool calls
-	return agent.EvaluateToolCalls(ctx, testCaseName, question, answer, evalCriteria.Reference)
+	return agent.EvaluateToolCalls(ctx, model, temperature, testCaseName, question, answer, evalCriteria.Reference)
 }
 
 // reportAggregateMetrics calculates and reports aggregate metrics

@@ -32,7 +32,7 @@ type ToolEvaluationResult struct {
 
 // Evaluator defines the interface for evaluating LLM responses
 type Evaluator interface {
-	Evaluate(ctx context.Context, testCase string, question string, answer string, reference string) (*EvaluationResult, error)
+	Evaluate(ctx context.Context, model string, temperature float64, testCase string, question string, answer string, reference string) (*EvaluationResult, error)
 }
 
 // Agent implements the Evaluator interface using an LLM as a judge
@@ -57,7 +57,7 @@ JSON response:`
 }
 
 // Evaluate assesses the quality of an answer against a reference using the LLM judge
-func (e *Agent) Evaluate(ctx context.Context, testCase string, question string, answer string, reference string) (*EvaluationResult, error) {
+func (e *Agent) Evaluate(ctx context.Context, model string, temperature float64, testCase string, question string, answer string, reference string) (*EvaluationResult, error) {
 	// Construct the user message with the question, answer, and reference
 	userMessage := fmt.Sprintf(e.userTemplate, question, answer, reference)
 
@@ -111,6 +111,8 @@ func (e *Agent) Evaluate(ctx context.Context, testCase string, question string, 
 	record.SetSeverity(log.SeverityInfo)
 	record.SetBody(log.StringValue("Evaluator response"))
 	record.AddAttributes(
+		log.String("model", model),
+		log.Float64("temperature", temperature),
 		log.String("test_case", sanitizeUTF8(testCase)),
 		log.String("question", truncateString(question, 100)),
 		log.String("answer", truncateString(answer, 200)),
@@ -357,7 +359,7 @@ func GetCriteria() map[string]Criteria {
 
 // EvaluateToolCalls evaluates the accuracy of tool calling in an LLM response
 // It checks tool selection, parameter correctness, and call sequence
-func (e *Agent) EvaluateToolCalls(ctx context.Context, testCase string, question string, answer string, reference string) (*ToolEvaluationResult, error) {
+func (e *Agent) EvaluateToolCalls(ctx context.Context, model string, temperature float64, testCase string, question string, answer string, reference string) (*ToolEvaluationResult, error) {
 	// Use the same evaluation template but with tool-specific prompt
 	userMessage := fmt.Sprintf(e.userTemplate, question, answer, reference)
 
@@ -410,6 +412,8 @@ func (e *Agent) EvaluateToolCalls(ctx context.Context, testCase string, question
 	record.SetSeverity(log.SeverityInfo)
 	record.SetBody(log.StringValue("Tool evaluation response"))
 	record.AddAttributes(
+		log.String("model", model),
+		log.Float64("temperature", temperature),
 		log.String("test_case", sanitizeUTF8(testCase)),
 		log.Float64("tool_selection_score", result.ToolSelectionScore),
 		log.Float64("parameter_accuracy", result.ParameterAccuracy),
