@@ -112,7 +112,7 @@ func (e *Agent) Evaluate(ctx context.Context, model string, temperature float64,
 	record.SetBody(log.StringValue("Evaluator response"))
 	record.AddAttributes(
 		log.String("model", model),
-		log.Float64("temperature", temperature),
+		log.String("temperature", fmt.Sprintf("%.1f", temperature)),
 		log.String("test_case", sanitizeUTF8(testCase)),
 		log.String("question", truncateString(question, 100)),
 		log.String("answer", truncateString(answer, 200)),
@@ -413,7 +413,7 @@ func (e *Agent) EvaluateToolCalls(ctx context.Context, model string, temperature
 	record.SetBody(log.StringValue("Tool evaluation response"))
 	record.AddAttributes(
 		log.String("model", model),
-		log.Float64("temperature", temperature),
+		log.String("temperature", fmt.Sprintf("%.1f", temperature)),
 		log.String("test_case", sanitizeUTF8(testCase)),
 		log.Float64("tool_selection_score", result.ToolSelectionScore),
 		log.Float64("parameter_accuracy", result.ParameterAccuracy),

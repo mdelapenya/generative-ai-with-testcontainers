@@ -210,7 +210,7 @@ func (c *Client) GenerateWithTemp(ctx context.Context, testCase string, systemPr
 		log.String("model", sanitizeUTF8(c.model)),
 		log.String("system_prompt", truncateString(systemPrompt, 100)),
 		log.String("user_prompt", truncateString(userPrompt, 200)),
-		log.Float64("temperature", temperature),
+		log.String("temperature", fmt.Sprintf("%.1f", temperature)),
 		log.String("response_content", truncateString(responseContent, 500)),
 		log.Int("prompt_tokens", resp.PromptTokens),
 		log.Int("completion_tokens", resp.CompletionTokens),
