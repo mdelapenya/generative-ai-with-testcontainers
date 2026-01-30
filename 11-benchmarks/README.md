@@ -63,19 +63,21 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
 
 - `gpu.go`: Samples GPU metrics with auto-detection for NVIDIA (`nvidia-smi`) and Apple Silicon (`ioreg`). See [GPU Metrics](#gpu-metrics) section below for details.
 
-- `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 22 panels:
+- `grafana_dash.go`: Creates a Grafana dashboard titled "LLM Bench (DMR + Testcontainers)" with 21 panels:
   1. **Latency Percentiles (p50/p95)** - Overall response time metrics
-  2. **Latency Histogram with Exemplars** - Response time distribution with drill-down to traces
-  3. **Prompt Evaluation Time (p50/p95)** - Time to first token metrics
-  4. **Prompt Eval Time Distribution with Exemplars** - Prompt processing patterns
-  5. **Tokens per Operation** - Token usage and verbosity
-  6. **Success Rate** - Model reliability metrics
-  7. **Tokens per Second** - Generation throughput
-  8. **GPU Utilization** (Optional) - Hardware efficiency
-  9. **GPU Memory** (Optional) - Memory consumption
-  10. **Evaluator Score** - Quality assessment with drill-down to Loki logs
-  11. **Evaluator Pass Rate** - Quality pass rate with drill-down to Loki logs
-  12-18. **Tool Calling Metrics** - Only populated for tool-assisted test cases:
+  2. **Latency Distribution with Exemplars** - Response time distribution with drill-down to traces
+  3. **TTFT Percentiles (p50/p95)** - Time To First Token metrics
+  4. **TTFT Distribution with Exemplars** - TTFT patterns with drill-down to traces
+  5. **Prompt Evaluation Time (p50/p95)** - Prompt processing time metrics
+  6. **Prompt Eval Time Distribution with Exemplars** - Prompt processing patterns
+  7. **Tokens per Operation** - Token usage and verbosity
+  8. **Success Rate** - Model reliability metrics
+  9. **Tokens per Second** - Generation throughput
+  10. **GPU Utilization** (Optional) - Hardware efficiency
+  11. **GPU Memory** (Optional) - Memory consumption
+  12. **Evaluator Score** - Quality assessment with drill-down to Loki logs
+  13. **Evaluator Pass Rate** - Quality pass rate with drill-down to Loki logs
+  14-20. **Tool Calling Metrics** - Only populated for tool-assisted test cases:
       - **Tool Call Latency** - Execution time histogram per tool
       - **Tool Calls per Operation** - Average calls per benchmark
       - **LLM-Tool Iterations** - Roundtrips between LLM and tools
@@ -83,7 +85,9 @@ The code demonstrates how to benchmark multiple Small Language Models using Go's
       - **Tool Parameter Accuracy** - Parameter extraction correctness (0.0-1.0)
       - **Tool Selection Accuracy** - Correct tool choice rate (0.0-1.0)
       - **Tool Convergence (Path Efficiency)** - How efficiently models follow optimal path (1.0 = optimal)
-  19. **ns/op (Go Benchmark)** - Go benchmark framework metric
+  21. **ns/op (Go Benchmark)** - Go benchmark framework metric
+
+  All panels include data links to Loki logs, Prometheus Metrics Drilldown, and Tempo traces for easy investigation.
 
   The dashboard includes template variables for filtering by model, test case, and temperature. The dashboard uses a fixed UID (`llm-bench-dmr-tc`) to ensure it is **automatically updated** on each benchmark run without creating duplicates.
 
@@ -218,8 +222,8 @@ go test -bench=. -benchtime=5x -timeout=30m
 ### What to Expect
 
 - 5 iterations per benchmark, up to 30 min timeout (model downloads take time)
-- **100 scenarios** (4 local models × 5 test cases × 5 temperatures)
-- **125 scenarios** with OpenAI API key (adds GPT-5.1)
+- **160 scenarios** (4 local models × 8 test cases × 5 temperatures)
+- **200 scenarios** with OpenAI API key (adds GPT-5.1)
 - Containers kept running after completion for dashboard exploration
 
 The benchmark disables [Ryuk garbage collector](https://golang.testcontainers.org/features/garbage_collector/#ryuk) to keep containers running after completion for dashboard exploration.
@@ -228,12 +232,10 @@ The benchmark disables [Ryuk garbage collector](https://golang.testcontainers.or
 
 ```shell
 BenchmarkLLMs/Pull/llama3.2-8                                  1         ...
-BenchmarkLLMs/llama3.2/code-explanation/temp0.1-8              5         ... latency_p50_ms:250.00 latency_p95_ms:280.00 prompt_eval_p50_ms:45.00 prompt_eval_p95_ms:52.00 tokens_per_op:45.00 success_rate:1.00 score:0.85 tokens_per_sec:180.00
-BenchmarkLLMs/llama3.2/code-explanation/temp0.3-8              5         ... latency_p50_ms:255.00 prompt_eval_p50_ms:46.00 ...
-BenchmarkLLMs/llama3.2/code-explanation/temp0.5-8              5         ... latency_p50_ms:260.00 prompt_eval_p50_ms:47.00 ...
-BenchmarkLLMs/llama3.2/code-explanation/temp0.7-8              5         ... latency_p50_ms:270.00 prompt_eval_p50_ms:48.00 ...
-BenchmarkLLMs/llama3.2/code-explanation/temp0.9-8              5         ... latency_p50_ms:290.00 prompt_eval_p50_ms:50.00 ...
-BenchmarkLLMs/llama3.2/mathematical-operations/temp0.1-8       5         ... latency_p50_ms:150.00 prompt_eval_p50_ms:30.00 ...
+BenchmarkLLMs/llama3.2/code-explanation/temp0.1-8              5         ... eval_pass_rate:1.00 eval_score:0.85 latency_p50_ms:250.00 latency_p95_ms:280.00 success_rate:1.00 tokens_per_op:45.00 tokens_per_sec:180.00 ttft_p50_ms:45.00 ttft_p95_ms:52.00
+BenchmarkLLMs/llama3.2/code-explanation/temp0.3-8              5         ... latency_p50_ms:255.00 ttft_p50_ms:46.00 ...
+...
+BenchmarkLLMs/llama3.2/calculator-reasoning/temp0.1-8          3         ... eval_score:0.80 latency_p50_ms:4002.00 success_rate:1.00 tokens_per_op:571.30 ...
 ...
 ```
 
@@ -320,15 +322,21 @@ All evaluator responses and model outputs are automatically logged to the Grafan
 
 Click on log lines in Grafana to view all attributes (model, tokens, scores, etc.), then click on attribute values to add them as filters.
 
-### Panel-to-Logs Drill-Down
+### Panel Data Links
 
-The **Evaluator Score** and **Evaluator Pass Rate** panels include data links that let you click on any data point to view the individual evaluation logs that contributed to that aggregated metric:
+All dashboard panels include data links that let you click on any data point to drill down into related observability data:
 
-- Click on a data point in the panel
-- Select "View Individual Evaluations" from the context menu
-- Grafana Explore opens with logs filtered to that test case in a ±30-second window around the clicked point
+**Available Links on All Panels**:
+1. **View Logs** - Opens Grafana Explore with Loki logs filtered by model, test case, and temperature
+2. **View Metrics** - Opens Grafana Metrics Drilldown App with filters for the selected series
+3. **View Traces** - Opens Grafana Explore Traces App with the dashboard's time range
 
-**Important**: Each metric data point shows an **average score** across multiple benchmark iterations. When you drill down, you'll see multiple log entries (one per iteration) with individual scores (0.0, 0.5, or 1.0) and detailed reasoning from the evaluator LLM.
+**How to Use**:
+- Click on a data point in any panel
+- Select the desired link from the context menu
+- Grafana opens with the dashboard's current time range (`$__from` to `$__to`) preserved
+
+**Important**: Metric data points show **aggregated values** (averages, percentiles). When you drill down to logs, you'll see individual log entries with detailed information from each benchmark iteration.
 
 ### Advanced Log Queries
 
@@ -358,6 +366,8 @@ The **Evaluator Score** and **Evaluator Pass Rate** panels include data links th
 ### Log Attributes Reference
 
 **Evaluator Logs** (`scope_name="evaluator"`):
+- `model`: Model being evaluated
+- `temperature`: Temperature setting (e.g., "0.1", "0.5")
 - `test_case`: Test case name
 - `question`: The question (truncated to 100 chars)
 - `answer`: The answer being evaluated (truncated to 200 chars)
@@ -391,51 +401,73 @@ For log-based analysis of individual evaluations and model responses, see [Logs 
 
 ### Console Metrics
 
-- **latency_p50_ms / latency_p95_ms**: Median and 95th percentile response time (ms)
-- **prompt_eval_p50_ms / prompt_eval_p95_ms**: Time to first token (TTFT) - prompt processing time (ms)
+- **latency_p50_ms / latency_p95_ms**: Median and 95th percentile total response time (ms)
+- **ttft_p50_ms / ttft_p95_ms**: Time To First Token - latency until first token arrives (ms)
+- **prompt_eval_p50_ms / prompt_eval_p95_ms**: Prompt evaluation time - model's internal prompt processing (ms)
 - **tokens_per_op**: Average tokens per request (prompt + completion)
 - **success_rate**: Percentage of successful requests (0.0-1.0)
-- **score**: Quality score (0.0-1.0) based on response characteristics
+- **eval_score**: Quality score (0.0-1.0) from LLM evaluator
+- **eval_pass_rate**: Percentage of "yes" evaluations (0.0-1.0)
 - **tokens_per_sec**: Generation throughput
+- **output_tokens_per_sec**: Output token generation speed
 
 ### Grafana Dashboard Panels
 
-The dashboard **"LLM Bench (DMR + Testcontainers)"** includes 10 panels with template variables (model, case, temp) for filtering:
+The dashboard **"LLM Bench (DMR + Testcontainers)"** includes 21 panels with template variables (model, case, temp) for filtering. All panels include data links to logs, metrics drilldown, and traces.
 
-#### 1-2. Latency (Percentiles & Histogram with Exemplars)
+#### 1-2. Latency (Percentiles & Distribution with Exemplars)
 - **p50/p95**: Median and worst-case response times
-- **Histogram**: Distribution patterns; click exemplars to drill into traces
+- **Distribution**: Response time patterns; click exemplars to drill into traces
 - Lower = faster; compare consistency (p95 vs p50 gap)
 
-#### 3-4. Prompt Eval Time (Percentiles & Distribution with Exemplars)
-- Time to first token (TTFT) - prompt processing before generation
-- Critical for perceived responsiveness
+#### 3-4. TTFT (Percentiles & Distribution with Exemplars)
+- Time To First Token - measures initial response latency
+- Critical for perceived responsiveness in streaming applications
+- Click exemplars to investigate slow starts
+
+#### 5-6. Prompt Eval Time (Percentiles & Distribution with Exemplars)
+- Time for the model to process the prompt before generating tokens
+- Important for understanding prompt complexity impact
 - Click exemplars to investigate slow evaluations
 
-#### 5. Tokens per Operation
+#### 7. Tokens per Operation
 - Average tokens per request (verbosity indicator)
 - Use for cost estimation: tokens/request × requests/day × cost/token
 
-#### 6. Success Rate
+#### 8. Success Rate
 - Reliability: % of requests completed without errors (0-100%)
 - Target: 95%+ for production
 - Note: Measures reliability, not quality
 
-#### 7. Tokens per Second
+#### 9. Tokens per Second
 - Generation throughput
 - Higher = faster; critical for real-time apps
 
-#### 8-9. GPU Utilization & Memory (Optional)
+#### 10-11. GPU Utilization & Memory (Optional)
 - **Utilization**: 0-100% usage (near 100% = may need more GPUs)
 - **Memory**: MB consumed (check model fits your GPU)
 - Requires host execution (not containers); see [GPU Metrics](#gpu-metrics) section
 
-#### 10. Evaluator Score & Pass Rate
+#### 12-13. Evaluator Score & Pass Rate
 - **Evaluator Score**: Average quality rating (0.0-1.0) from the LLM evaluator agent
 - **Pass Rate**: Percentage of responses marked as "yes" by the evaluator
 - Based on test-case-specific evaluation criteria (see [Evaluator Agent Deep Dive](#evaluator-agent-deep-dive))
 - Customize by editing system prompts in `evaluator/testdata/evaluation/`
 - Balance quality scores with speed and success rate
+
+#### 14-20. Tool Calling Metrics
+Only populated for tool-assisted test cases (calculator-reasoning, code-validation, api-data-retrieval):
+- **Tool Call Latency**: Execution time histogram per tool
+- **Tool Calls per Operation**: Average calls per benchmark
+- **LLM-Tool Iterations**: Roundtrips between LLM and tools
+- **Tool Success Rate**: Tool execution success ratio
+- **Tool Parameter Accuracy**: Parameter extraction correctness (0.0-1.0)
+- **Tool Selection Accuracy**: Correct tool choice rate (0.0-1.0)
+- **Tool Convergence**: Path efficiency score (1.0 = optimal)
+
+#### 21. ns/op (Go Benchmark)
+- Native Go benchmark framework metric
+- Total time per operation in nanoseconds
 
 For a complete guide on interpreting these panels, see [How to Read This Dashboard](#how-to-read-this-dashboard).
 
