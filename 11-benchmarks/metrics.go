@@ -40,6 +40,9 @@ type AggregateMetrics struct {
 	ToolParamAccuracy     float64 // Tool parameter extraction accuracy (0.0-1.0)
 	ToolSelectionAccuracy float64 // Correct tool selection rate (0.0-1.0)
 	ToolConvergence       float64 // Path convergence score (1.0 = optimal path)
+	// GPU metrics (sampled during benchmark execution)
+	GPUUtilization float64 // GPU utilization percentage
+	GPUMemory      float64 // GPU memory usage in MB
 }
 
 // MetricsCollector collects and records LLM benchmark metrics
@@ -55,10 +58,6 @@ type MetricsCollector struct {
 	// Store aggregate metrics per model/case/temp combination
 	aggregates   map[string]*AggregateMetrics
 	aggregatesMu sync.RWMutex // Protects aggregates map for concurrent access
-
-	// GPU metrics
-	gpuUtilization float64
-	gpuMemory      float64
 
 	// Counters
 	totalRequests      int64
@@ -387,7 +386,16 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		metric.WithDescription(semconv.DescGPUUtilization),
 		metric.WithUnit(semconv.UnitPercent),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
-			o.Observe(mc.gpuUtilization)
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.GPUUtilization, metric.WithAttributes(attrs...))
+			}
 			return nil
 		}),
 	); err != nil {
@@ -399,7 +407,16 @@ func NewMetricsCollector() (*MetricsCollector, error) {
 		metric.WithDescription(semconv.DescGPUMemory),
 		metric.WithUnit(semconv.UnitMegabytes),
 		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
-			o.Observe(mc.gpuMemory)
+			mc.aggregatesMu.RLock()
+			defer mc.aggregatesMu.RUnlock()
+			for _, agg := range mc.aggregates {
+				attrs := []attribute.KeyValue{
+					attribute.String(semconv.AttrModel, agg.Model),
+					attribute.String(semconv.AttrCase, agg.TestCase),
+					attribute.String(semconv.AttrTemp, fmt.Sprintf("%.1f", agg.Temp)),
+				}
+				o.Observe(agg.GPUMemory, metric.WithAttributes(attrs...))
+			}
 			return nil
 		}),
 	); err != nil {
@@ -676,10 +693,16 @@ func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase stri
 	}
 }
 
-// UpdateGPUMetrics updates GPU utilization and memory metrics
-func (mc *MetricsCollector) UpdateGPUMetrics(utilization, memory float64) {
-	mc.gpuUtilization = utilization
-	mc.gpuMemory = memory
+// UpdateGPUMetrics updates GPU utilization and memory metrics for a specific model/case/temp
+func (mc *MetricsCollector) UpdateGPUMetrics(model, testCase string, temp float64, utilization, memory float64) {
+	mc.aggregatesMu.Lock()
+	defer mc.aggregatesMu.Unlock()
+
+	key := fmt.Sprintf("%s/%s/%.1f", model, testCase, temp)
+	if agg, ok := mc.aggregates[key]; ok {
+		agg.GPUUtilization = utilization
+		agg.GPUMemory = memory
+	}
 }
 
 // IncrementSuccess increments the successful request counter

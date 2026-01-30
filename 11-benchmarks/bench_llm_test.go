@@ -240,7 +240,7 @@ func BenchmarkLLMs(b *testing.B) {
 						if i%5 == 0 {
 							gpuMetrics, _ := SampleGPU()
 							if gpuMetrics != nil && gpuMetrics.Available {
-								metricsCollector.UpdateGPUMetrics(gpuMetrics.Utilization, gpuMetrics.MemoryUsed)
+								metricsCollector.UpdateGPUMetrics(modelName, tc.Name, temp, gpuMetrics.Utilization, gpuMetrics.MemoryUsed)
 							}
 						}
 					}

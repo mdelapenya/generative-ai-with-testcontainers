@@ -11,9 +11,9 @@ import (
 	"github.com/mdelapenya/genai-testcontainers-go/benchmarks/semconv"
 )
 
-// createPercentilePanel creates a timeseries panel showing p50 and p95 percentiles
-func createPercentilePanel(id int, title string, p50Metric, p95Metric string, x, y int, unit string) map[string]interface{} {
-	return map[string]interface{}{
+// createPercentilePanelWithLinks creates a timeseries panel showing p50 and p95 percentiles with optional data links
+func createPercentilePanelWithLinks(id int, title string, p50Metric, p95Metric string, x, y int, unit string, dataLinks []map[string]interface{}) map[string]interface{} {
+	panel := map[string]interface{}{
 		"id":      id,
 		"type":    "timeseries",
 		"title":   title,
@@ -46,11 +46,19 @@ func createPercentilePanel(id int, title string, p50Metric, p95Metric string, x,
 			},
 		},
 	}
+
+	// Add data links if provided
+	if len(dataLinks) > 0 {
+		defaults := panel["fieldConfig"].(map[string]interface{})["defaults"].(map[string]interface{})
+		defaults["links"] = dataLinks
+	}
+
+	return panel
 }
 
-// createHistogramPanel creates a histogram panel with exemplar support
-func createHistogramPanel(id int, title string, bucketMetric string, x, y int, unit string) map[string]interface{} {
-	return map[string]interface{}{
+// createHistogramPanelWithLinks creates a histogram panel with exemplar support and optional data links
+func createHistogramPanelWithLinks(id int, title string, bucketMetric string, x, y int, unit string, dataLinks []map[string]interface{}) map[string]interface{} {
+	panel := map[string]interface{}{
 		"id":      id,
 		"type":    "histogram",
 		"title":   title,
@@ -80,11 +88,14 @@ func createHistogramPanel(id int, title string, bucketMetric string, x, y int, u
 			},
 		},
 	}
-}
 
-// createSimpleTimeseriesPanel creates a basic timeseries panel with a single metric
-func createSimpleTimeseriesPanel(id int, title string, metric string, x, y, w, h int, unit string, minMax map[string]interface{}) map[string]interface{} {
-	return createSimpleTimeseriesPanelWithLinks(id, title, metric, x, y, w, h, unit, minMax, nil)
+	// Add data links if provided
+	if len(dataLinks) > 0 {
+		defaults := panel["fieldConfig"].(map[string]interface{})["defaults"].(map[string]interface{})
+		defaults["links"] = dataLinks
+	}
+
+	return panel
 }
 
 // createSimpleTimeseriesPanelWithLinks creates a basic timeseries panel with a single metric and optional data links
@@ -130,40 +141,67 @@ func createSimpleTimeseriesPanelWithLinks(id int, title string, metric string, x
 	return panel
 }
 
-// createNoLabelTimeseriesPanel creates a timeseries panel without label filters (for GPU metrics)
-func createNoLabelTimeseriesPanel(id int, title, legendFormat string, metric string, x, y, w, h int, unit string, minMax map[string]interface{}) map[string]interface{} {
-	panel := map[string]interface{}{
-		"id":      id,
-		"type":    "timeseries",
-		"title":   title,
-		"gridPos": map[string]int{"x": x, "y": y, "w": w, "h": h},
-		"targets": []map[string]interface{}{
-			{
-				"expr":         metric,
-				"legendFormat": legendFormat,
-				"datasource": map[string]interface{}{
-					"type": "prometheus",
-					"uid":  "prometheus",
-				},
-				"refId": "A",
-			},
-		},
-		"fieldConfig": map[string]interface{}{
-			"defaults": map[string]interface{}{
-				"unit": unit,
-			},
+// Data link helper functions
+// buildLokiExploreLink creates a Grafana Explore data link for Loki logs
+// - title: Link title shown in the panel context menu
+// - logBodyFilter: The string to filter log bodies (e.g., "Model response", "Evaluator response")
+// - testCaseField: The field name for test_case in the log (usually "test_case", but "case" for benchmark errors)
+// - tempField: The field name for temperature in the log (usually "temperature", but "temp" for benchmark errors)
+func buildLokiExploreLink(title, logBodyFilter, testCaseField, tempField string) []map[string]interface{} {
+	// Build LogQL query with filters for model, test_case, and temperature
+	// Note: ${__field.labels.*} variables are interpolated by Grafana at click time
+	query := fmt.Sprintf(`{service_name=\"llm-benchmark\"} |= \"%s\" | json | model=\"${__field.labels.model}\" | %s=\"${__field.labels.case}\" | %s=\"${__field.labels.temp}\"`,
+		logBodyFilter, testCaseField, tempField)
+
+	url := fmt.Sprintf(`/explore?orgId=1&schemaVersion=1&panes={"lnk":{"datasource":"loki","queries":[{"refId":"A","expr":"%s","queryType":"range"}],"range":{"from":"$__from","to":"$__to"}}}`,
+		query)
+
+	return []map[string]interface{}{
+		{
+			"title": title,
+			"url":   url,
 		},
 	}
+}
 
-	// Add min/max if provided
-	if minMax != nil {
-		defaults := panel["fieldConfig"].(map[string]interface{})["defaults"].(map[string]interface{})
-		for k, v := range minMax {
-			defaults[k] = v
-		}
-	}
+// llmClientLogLink creates a data link to llmclient logs filtered by model, test_case, and temperature
+func llmClientLogLink() []map[string]interface{} {
+	return buildLokiExploreLink(
+		"View Model Responses (${__field.labels.model} - ${__field.labels.case} - T=${__field.labels.temp})",
+		"Model response",
+		"test_case",
+		"temperature",
+	)
+}
 
-	return panel
+// evaluatorLogLink creates a data link to evaluator logs filtered by model, test_case, and temperature
+func evaluatorLogLink() []map[string]interface{} {
+	return buildLokiExploreLink(
+		"View Individual Evaluations (${__field.labels.model} - ${__field.labels.case} - T=${__field.labels.temp})",
+		"Evaluator response",
+		"test_case",
+		"temperature",
+	)
+}
+
+// toolEvaluatorLogLink creates a data link to tool evaluation logs filtered by model, test_case, and temperature
+func toolEvaluatorLogLink() []map[string]interface{} {
+	return buildLokiExploreLink(
+		"View Tool Evaluations (${__field.labels.model} - ${__field.labels.case} - T=${__field.labels.temp})",
+		"Tool evaluation response",
+		"test_case",
+		"temperature",
+	)
+}
+
+// benchmarkErrorLogLink creates a data link to benchmark error logs filtered by model, test_case, and temperature
+func benchmarkErrorLogLink() []map[string]interface{} {
+	return buildLokiExploreLink(
+		"View Errors (${__field.labels.model} - ${__field.labels.case} - T=${__field.labels.temp})",
+		"error",
+		"case", // benchmark errors use "case" instead of "test_case"
+		"temp", // benchmark errors use "temp" instead of "temperature"
+	)
 }
 
 // CreateGrafanaDashboard creates a Grafana dashboard for LLM benchmarks
@@ -276,25 +314,25 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 			},
 			"panels": []map[string]interface{}{
 				// Latency metrics
-				createPercentilePanel(1, "Latency Percentiles (p50/p95)", promLatencyP50, promLatencyP95, 0, 0, "ms"),
-				createHistogramPanel(2, "Latency Distribution (with Exemplars)", promLatency, 12, 0, "ms"),
+				createPercentilePanelWithLinks(1, "Latency Percentiles (p50/p95)", promLatencyP50, promLatencyP95, 0, 0, "ms", llmClientLogLink()),
+				createHistogramPanelWithLinks(2, "Latency Distribution (with Exemplars)", promLatency, 12, 0, "ms", llmClientLogLink()),
 
 				// TTFT metrics
-				createPercentilePanel(3, "TTFT Percentiles (p50/p95)", promTTFTP50, promTTFTP95, 0, 8, "ms"),
-				createHistogramPanel(4, "TTFT Distribution (with Exemplars)", promTTFT, 12, 8, "ms"),
+				createPercentilePanelWithLinks(3, "TTFT Percentiles (p50/p95)", promTTFTP50, promTTFTP95, 0, 8, "ms", llmClientLogLink()),
+				createHistogramPanelWithLinks(4, "TTFT Distribution (with Exemplars)", promTTFT, 12, 8, "ms", llmClientLogLink()),
 
 				// Prompt Evaluation Time metrics
-				createPercentilePanel(5, "Prompt Evaluation Time (p50/p95)", promPromptEvalTimeP50, promPromptEvalTimeP95, 0, 16, "ms"),
-				createHistogramPanel(6, "Prompt Eval Time Distribution (with Exemplars)", promPromptEvalTime, 12, 16, "ms"),
+				createPercentilePanelWithLinks(5, "Prompt Evaluation Time (p50/p95)", promPromptEvalTimeP50, promPromptEvalTimeP95, 0, 16, "ms", llmClientLogLink()),
+				createHistogramPanelWithLinks(6, "Prompt Eval Time Distribution (with Exemplars)", promPromptEvalTime, 12, 16, "ms", llmClientLogLink()),
 
 				// Other metrics
-				createSimpleTimeseriesPanel(7, "Tokens per Operation", promTokensPerOp, 0, 24, 8, 8, "short", nil),
-				createSimpleTimeseriesPanel(8, "Success Rate", promSuccessRate, 8, 24, 8, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}),
-				createSimpleTimeseriesPanel(9, "Tokens per Second", promTokensPerSecond, 16, 24, 8, 8, "short", nil),
+				createSimpleTimeseriesPanelWithLinks(7, "Tokens per Operation", promTokensPerOp, 0, 24, 8, 8, "short", nil, llmClientLogLink()),
+				createSimpleTimeseriesPanelWithLinks(8, "Success Rate", promSuccessRate, 8, 24, 8, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, benchmarkErrorLogLink()),
+				createSimpleTimeseriesPanelWithLinks(9, "Tokens per Second", promTokensPerSecond, 16, 24, 8, 8, "short", nil, llmClientLogLink()),
 
 				// GPU metrics
-				createNoLabelTimeseriesPanel(10, "GPU Utilization", "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}),
-				createNoLabelTimeseriesPanel(11, "GPU Memory Usage", "GPU Memory", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil),
+				createSimpleTimeseriesPanelWithLinks(10, "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}, llmClientLogLink()),
+				createSimpleTimeseriesPanelWithLinks(11, "GPU Memory Usage", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil, llmClientLogLink()),
 
 				// Evaluator metrics with data links to Loki logs
 				// IMPORTANT: These metrics show aggregated average scores calculated from multiple benchmark iterations.
@@ -303,39 +341,23 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				// dashboard time window. You'll see multiple log entries (one per benchmark iteration)
 				// with individual scores (0.0, 0.5, or 1.0) and detailed reasoning from the evaluator LLM.
 				createSimpleTimeseriesPanelWithLinks(12, "Evaluator Score", promEvalScore, 0, 40, 12, 8, "short",
-					map[string]interface{}{"min": 0, "max": 1},
-					[]map[string]interface{}{
-						{
-							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case})",
-							"url":   "/explore?orgId=1&from=$__from&to=$__to&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} |= \\\"scope_name\\\" |= \\\"evaluator\\\" | json | test_case=\\\"${__field.labels.case}\\\"\",\"queryType\":\"range\"}]}",
-						},
-					},
-				),
+					map[string]interface{}{"min": 0, "max": 1}, evaluatorLogLink()),
 				createSimpleTimeseriesPanelWithLinks(13, "Evaluator Pass Rate", promEvalPassRate, 12, 40, 12, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1},
-					[]map[string]interface{}{
-						{
-							"title": "View Individual Evaluations (${__field.labels.model} - ${__field.labels.case})",
-							"url":   "/explore?orgId=1&from=$__from&to=$__to&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=\\\"llm-benchmark\\\"} |= \\\"scope_name\\\" |= \\\"evaluator\\\" | json | test_case=\\\"${__field.labels.case}\\\"\",\"queryType\":\"range\"}]}",
-						},
-					},
-				),
+					map[string]interface{}{"min": 0, "max": 1}, evaluatorLogLink()),
 
 				// Tool calling metrics (only populated for tool-assisted test cases)
-				createHistogramPanel(15, "Tool Call Latency", promToolCallLatency, 0, 48, "ms"),
-				createSimpleTimeseriesPanel(16, "Tool Calls per Operation", promToolCallCount, 0, 56, 8, 8, "short", nil),
-				createSimpleTimeseriesPanel(17, "LLM-Tool Iterations", promToolIterationCount, 8, 56, 8, 8, "short", nil),
-				createSimpleTimeseriesPanel(18, "Tool Success Rate", promToolSuccessRate, 16, 56, 8, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}),
-				createSimpleTimeseriesPanel(19, "Tool Parameter Accuracy", promToolParamAccuracy, 0, 64, 12, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}),
-				createSimpleTimeseriesPanel(20, "Tool Selection Accuracy", promToolSelectionAccuracy, 12, 64, 12, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}),
-				createSimpleTimeseriesPanel(21, "Tool Convergence (Path Efficiency)", promToolConvergence, 0, 72, 24, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}),
+				createHistogramPanelWithLinks(15, "Tool Call Latency", promToolCallLatency, 0, 48, "ms", llmClientLogLink()),
+				createSimpleTimeseriesPanelWithLinks(16, "Tool Calls per Operation", promToolCallCount, 0, 56, 8, 8, "short", nil, llmClientLogLink()),
+				createSimpleTimeseriesPanelWithLinks(17, "LLM-Tool Iterations", promToolIterationCount, 8, 56, 8, 8, "short", nil, llmClientLogLink()),
+				createSimpleTimeseriesPanelWithLinks(18, "Tool Success Rate", promToolSuccessRate, 16, 56, 8, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1}, llmClientLogLink()),
+				createSimpleTimeseriesPanelWithLinks(19, "Tool Parameter Accuracy", promToolParamAccuracy, 0, 64, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, toolEvaluatorLogLink()),
+				createSimpleTimeseriesPanelWithLinks(20, "Tool Selection Accuracy", promToolSelectionAccuracy, 12, 64, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, toolEvaluatorLogLink()),
+				createSimpleTimeseriesPanelWithLinks(21, "Tool Convergence (Path Efficiency)", promToolConvergence, 0, 72, 24, 8, "percentunit",
+					map[string]interface{}{"min": 0, "max": 1}, llmClientLogLink()),
 
 				// ns/op metric (Go benchmark) - moved to bottom
-				createSimpleTimeseriesPanel(22, "ns/op (Go Benchmark)", promNsPerOp, 0, 80, 24, 8, "ns", nil),
+				createSimpleTimeseriesPanelWithLinks(22, "ns/op (Go Benchmark)", promNsPerOp, 0, 80, 24, 8, "ns", nil, llmClientLogLink()),
 			},
 		},
 		"overwrite": true,
