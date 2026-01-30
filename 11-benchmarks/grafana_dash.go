@@ -175,6 +175,25 @@ func metricsLink() []map[string]interface{} {
 	return buildMetricsDrilldownLink("View Metrics (${__field.labels.model} - ${__field.labels.case} - T=${__field.labels.temp})")
 }
 
+// buildTracesExploreLink creates a Grafana Traces Explore data link for Tempo traces
+func buildTracesExploreLink(title string) []map[string]interface{} {
+	// Build URL with time range only - filters via var-filters cause TraceQL syntax errors
+	// Note: ${__field.labels.*} variables are interpolated by Grafana at click time
+	url := `/a/grafana-exploretraces-app/explore?from=$__from&to=$__to&timezone=browser&var-ds=tempo&var-metric=rate&var-groupBy=resource.service.name&actionView=breakdown`
+
+	return []map[string]interface{}{
+		{
+			"title": title,
+			"url":   url,
+		},
+	}
+}
+
+// tracesLink creates a data link to Tempo traces explore filtered by model, case, and temp
+func tracesLink() []map[string]interface{} {
+	return buildTracesExploreLink("View Traces (${__field.labels.model} - ${__field.labels.case} - T=${__field.labels.temp})")
+}
+
 // buildLokiExploreLink creates a Grafana Explore data link for Loki logs
 // - title: Link title shown in the panel context menu
 // - logBodyFilter: The string to filter log bodies (e.g., "Model response", "Evaluator response")
@@ -347,25 +366,25 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 			},
 			"panels": []map[string]interface{}{
 				// Latency metrics
-				createPercentilePanelWithLinks(1, "Latency Percentiles (p50/p95)", promLatencyP50, promLatencyP95, 0, 0, "ms", combineLinks(llmClientLogLink, metricsLink)),
-				createHistogramPanelWithLinks(2, "Latency Distribution (with Exemplars)", promLatency, 12, 0, "ms", combineLinks(llmClientLogLink, metricsLink)),
+				createPercentilePanelWithLinks(1, "Latency Percentiles (p50/p95)", promLatencyP50, promLatencyP95, 0, 0, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createHistogramPanelWithLinks(2, "Latency Distribution (with Exemplars)", promLatency, 12, 0, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 
 				// TTFT metrics
-				createPercentilePanelWithLinks(3, "TTFT Percentiles (p50/p95)", promTTFTP50, promTTFTP95, 0, 8, "ms", combineLinks(llmClientLogLink, metricsLink)),
-				createHistogramPanelWithLinks(4, "TTFT Distribution (with Exemplars)", promTTFT, 12, 8, "ms", combineLinks(llmClientLogLink, metricsLink)),
+				createPercentilePanelWithLinks(3, "TTFT Percentiles (p50/p95)", promTTFTP50, promTTFTP95, 0, 8, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createHistogramPanelWithLinks(4, "TTFT Distribution (with Exemplars)", promTTFT, 12, 8, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 
 				// Prompt Evaluation Time metrics
-				createPercentilePanelWithLinks(5, "Prompt Evaluation Time (p50/p95)", promPromptEvalTimeP50, promPromptEvalTimeP95, 0, 16, "ms", combineLinks(llmClientLogLink, metricsLink)),
-				createHistogramPanelWithLinks(6, "Prompt Eval Time Distribution (with Exemplars)", promPromptEvalTime, 12, 16, "ms", combineLinks(llmClientLogLink, metricsLink)),
+				createPercentilePanelWithLinks(5, "Prompt Evaluation Time (p50/p95)", promPromptEvalTimeP50, promPromptEvalTimeP95, 0, 16, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createHistogramPanelWithLinks(6, "Prompt Eval Time Distribution (with Exemplars)", promPromptEvalTime, 12, 16, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 
 				// Other metrics
-				createSimpleTimeseriesPanelWithLinks(7, "Tokens per Operation", promTokensPerOp, 0, 24, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(8, "Success Rate", promSuccessRate, 8, 24, 8, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, combineLinks(benchmarkErrorLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(9, "Tokens per Second", promTokensPerSecond, 16, 24, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink)),
+				createSimpleTimeseriesPanelWithLinks(7, "Tokens per Operation", promTokensPerOp, 0, 24, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(8, "Success Rate", promSuccessRate, 8, 24, 8, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, combineLinks(benchmarkErrorLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(9, "Tokens per Second", promTokensPerSecond, 16, 24, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 
 				// GPU metrics
-				createSimpleTimeseriesPanelWithLinks(10, "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}, combineLinks(llmClientLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(11, "GPU Memory Usage", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil, combineLinks(llmClientLogLink, metricsLink)),
+				createSimpleTimeseriesPanelWithLinks(10, "GPU Utilization", promGPUUtilization, 0, 32, 12, 8, "percent", map[string]interface{}{"min": 0, "max": 100}, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(11, "GPU Memory Usage", promGPUMemory, 12, 32, 12, 8, "decmbytes", nil, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 
 				// Evaluator metrics with data links to Loki logs
 				// IMPORTANT: These metrics show aggregated average scores calculated from multiple benchmark iterations.
@@ -374,23 +393,23 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 				// dashboard time window. You'll see multiple log entries (one per benchmark iteration)
 				// with individual scores (0.0, 0.5, or 1.0) and detailed reasoning from the evaluator LLM.
 				createSimpleTimeseriesPanelWithLinks(12, "Evaluator Score", promEvalScore, 0, 40, 12, 8, "short",
-					map[string]interface{}{"min": 0, "max": 1}, combineLinks(evaluatorLogLink, metricsLink)),
+					map[string]interface{}{"min": 0, "max": 1}, combineLinks(evaluatorLogLink, metricsLink, tracesLink)),
 				createSimpleTimeseriesPanelWithLinks(13, "Evaluator Pass Rate", promEvalPassRate, 12, 40, 12, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}, combineLinks(evaluatorLogLink, metricsLink)),
+					map[string]interface{}{"min": 0, "max": 1}, combineLinks(evaluatorLogLink, metricsLink, tracesLink)),
 
 				// Tool calling metrics (only populated for tool-assisted test cases)
-				createHistogramPanelWithLinks(15, "Tool Call Latency", promToolCallLatency, 0, 48, "ms", combineLinks(llmClientLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(16, "Tool Calls per Operation", promToolCallCount, 0, 56, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(17, "LLM-Tool Iterations", promToolIterationCount, 8, 56, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink)),
+				createHistogramPanelWithLinks(15, "Tool Call Latency", promToolCallLatency, 0, 48, "ms", combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(16, "Tool Calls per Operation", promToolCallCount, 0, 56, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(17, "LLM-Tool Iterations", promToolIterationCount, 8, 56, 8, 8, "short", nil, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 				createSimpleTimeseriesPanelWithLinks(18, "Tool Success Rate", promToolSuccessRate, 16, 56, 8, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}, combineLinks(llmClientLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(19, "Tool Parameter Accuracy", promToolParamAccuracy, 0, 64, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, combineLinks(toolEvaluatorLogLink, metricsLink)),
-				createSimpleTimeseriesPanelWithLinks(20, "Tool Selection Accuracy", promToolSelectionAccuracy, 12, 64, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, combineLinks(toolEvaluatorLogLink, metricsLink)),
+					map[string]interface{}{"min": 0, "max": 1}, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(19, "Tool Parameter Accuracy", promToolParamAccuracy, 0, 64, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, combineLinks(toolEvaluatorLogLink, metricsLink, tracesLink)),
+				createSimpleTimeseriesPanelWithLinks(20, "Tool Selection Accuracy", promToolSelectionAccuracy, 12, 64, 12, 8, "percentunit", map[string]interface{}{"min": 0, "max": 1}, combineLinks(toolEvaluatorLogLink, metricsLink, tracesLink)),
 				createSimpleTimeseriesPanelWithLinks(21, "Tool Convergence (Path Efficiency)", promToolConvergence, 0, 72, 24, 8, "percentunit",
-					map[string]interface{}{"min": 0, "max": 1}, combineLinks(llmClientLogLink, metricsLink)),
+					map[string]interface{}{"min": 0, "max": 1}, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 
 				// ns/op metric (Go benchmark) - moved to bottom
-				createSimpleTimeseriesPanelWithLinks(22, "ns/op (Go Benchmark)", promNsPerOp, 0, 80, 24, 8, "ns", nil, combineLinks(llmClientLogLink, metricsLink)),
+				createSimpleTimeseriesPanelWithLinks(22, "ns/op (Go Benchmark)", promNsPerOp, 0, 80, 24, 8, "ns", nil, combineLinks(llmClientLogLink, metricsLink, tracesLink)),
 			},
 		},
 		"overwrite": true,
