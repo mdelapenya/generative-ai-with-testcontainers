@@ -698,7 +698,7 @@ func (mc *MetricsCollector) UpdateGPUMetrics(model, testCase string, temp float6
 	mc.aggregatesMu.Lock()
 	defer mc.aggregatesMu.Unlock()
 
-	key := fmt.Sprintf("%s/%s/%.1f", model, testCase, temp)
+	key := fmt.Sprintf("%s|%s|%.1f", model, testCase, temp)
 	if agg, ok := mc.aggregates[key]; ok {
 		agg.GPUUtilization = utilization
 		agg.GPUMemory = memory
