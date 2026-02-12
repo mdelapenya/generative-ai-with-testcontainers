@@ -23,6 +23,7 @@ var (
 	otelSetup        *OtelSetup
 	metricsCollector *MetricsCollector
 	evaluatorAgent   llms.Model // LLM model used for evaluation
+	gpuDeltaSampler  *GPUDeltaSampler // GPU delta sampler for accurate model memory tracking
 )
 
 // TestMain sets up the test environment
@@ -83,6 +84,18 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Failed to start DMR container: %s", err)
 	}
 	dmrContainer = dmrCtr
+
+	// Initialize GPU delta sampler and capture baseline
+	// This allows us to track model-specific GPU memory usage by comparing against system baseline
+	gpuDeltaSampler = NewGPUDeltaSampler()
+	if gpuDeltaSampler.IsAvailable() {
+		fmt.Printf("📊 GPU metrics available - capturing baseline...\n")
+		if err := gpuDeltaSampler.CaptureBaseline(); err == nil {
+			fmt.Printf("✅ GPU baseline captured (delta measurements enabled)\n")
+		} else {
+			fmt.Printf("⚠️  Failed to capture GPU baseline: %s (using absolute measurements)\n", err)
+		}
+	}
 
 	// Initialize evaluator agent
 	evaluatorAgent, err = initializeEvaluatorAgent(ctx)

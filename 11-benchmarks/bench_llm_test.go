@@ -238,8 +238,17 @@ func BenchmarkLLMs(b *testing.B) {
 
 						// Sample GPU metrics periodically
 						if i%5 == 0 {
-							gpuMetrics, _ := SampleGPU()
-							if gpuMetrics != nil && gpuMetrics.Available {
+							var gpuMetrics *GPUMetrics
+							var err error
+
+							// Use delta sampler if available, otherwise fall back to direct sampling
+							if gpuDeltaSampler != nil && gpuDeltaSampler.HasBaseline() {
+								gpuMetrics, err = gpuDeltaSampler.SampleDelta()
+							} else {
+								gpuMetrics, err = SampleGPU()
+							}
+
+							if err == nil && gpuMetrics != nil && gpuMetrics.Available {
 								metricsCollector.UpdateGPUMetrics(modelName, tc.Name, temp, gpuMetrics.Utilization, gpuMetrics.MemoryUsed)
 							}
 						}

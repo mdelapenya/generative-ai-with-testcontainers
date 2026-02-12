@@ -635,6 +635,15 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 
 	mc.aggregatesMu.Lock()
 	defer mc.aggregatesMu.Unlock()
+
+	// Preserve existing GPU metrics if they exist
+	existingGPUUtil := 0.0
+	existingGPUMem := 0.0
+	if existing, ok := mc.aggregates[key]; ok {
+		existingGPUUtil = existing.GPUUtilization
+		existingGPUMem = existing.GPUMemory
+	}
+
 	mc.aggregates[key] = &AggregateMetrics{
 		Model:              model,
 		TestCase:           testCase,
@@ -658,6 +667,9 @@ func (mc *MetricsCollector) UpdateAggregates(model, testCase string, temp, p50, 
 		ToolSuccessRate:       0,
 		ToolParamAccuracy:     0,
 		ToolSelectionAccuracy: 0,
+		// Preserve GPU metrics from previous sampling
+		GPUUtilization: existingGPUUtil,
+		GPUMemory:      existingGPUMem,
 	}
 }
 
@@ -667,6 +679,15 @@ func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase stri
 
 	mc.aggregatesMu.Lock()
 	defer mc.aggregatesMu.Unlock()
+
+	// Preserve existing GPU metrics if they exist
+	existingGPUUtil := 0.0
+	existingGPUMem := 0.0
+	if existing, ok := mc.aggregates[key]; ok {
+		existingGPUUtil = existing.GPUUtilization
+		existingGPUMem = existing.GPUMemory
+	}
+
 	mc.aggregates[key] = &AggregateMetrics{
 		Model:                 model,
 		TestCase:              testCase,
@@ -690,6 +711,9 @@ func (mc *MetricsCollector) UpdateAggregatesWithToolMetrics(model, testCase stri
 		ToolParamAccuracy:     toolParamAccuracy,
 		ToolSelectionAccuracy: toolSelectionAccuracy,
 		ToolConvergence:       toolConvergence,
+		// Preserve GPU metrics from previous sampling
+		GPUUtilization: existingGPUUtil,
+		GPUMemory:      existingGPUMem,
 	}
 }
 

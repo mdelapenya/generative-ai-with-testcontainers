@@ -213,19 +213,17 @@ func (s *AppleGPUSampler) getGPUMemory() float64 {
 
 	output := stdout.String()
 
-	// Method 1: Look for "Alloc system memory" in PerformanceStatistics
-	// This shows the total allocated system memory for the GPU
-	// Format: "Alloc system memory"=<bytes>
-	allocMem := s.extractMetric(output, `"Alloc system memory"\s*=\s*(\d+)`)
-	if allocMem > 0 {
-		return allocMem / (1024 * 1024) // Convert bytes to MB
-	}
-
-	// Method 2: Look for "In use system memory (driver)"
-	// This shows memory actively used by the driver
+	// Method 1: Look for "In use system memory (driver)" - Most specific
+	// This shows memory actively used by the driver (more accurate for model usage)
 	inUseMem := s.extractMetric(output, `"In use system memory \(driver\)"\s*=\s*(\d+)`)
 	if inUseMem > 0 {
 		return inUseMem / (1024 * 1024) // Convert bytes to MB
+	}
+
+	// Method 2: Try PerformanceStatistics vram usage
+	vramUsed := s.extractMetric(output, `"vramUsedBytes"\s*=\s*(\d+)`)
+	if vramUsed > 0 {
+		return vramUsed / (1024 * 1024) // Convert bytes to MB
 	}
 
 	// Method 3: Look for IOAcceleratorAllocatedMemory (older format)
@@ -234,10 +232,12 @@ func (s *AppleGPUSampler) getGPUMemory() float64 {
 		return allocMemLegacy / (1024 * 1024) // Convert bytes to MB
 	}
 
-	// Method 4: Try PerformanceStatistics vram usage
-	vramUsed := s.extractMetric(output, `"vramUsedBytes"\s*=\s*(\d+)`)
-	if vramUsed > 0 {
-		return vramUsed / (1024 * 1024) // Convert bytes to MB
+	// Method 4: Look for "Alloc system memory" as last resort
+	// NOTE: This shows TOTAL system-wide GPU allocation (all apps, system UI, etc.)
+	// May report 10-20GB+ on unified memory systems even for small models
+	allocMem := s.extractMetric(output, `"Alloc system memory"\s*=\s*(\d+)`)
+	if allocMem > 0 {
+		return allocMem / (1024 * 1024) // Convert bytes to MB
 	}
 
 	return 0
