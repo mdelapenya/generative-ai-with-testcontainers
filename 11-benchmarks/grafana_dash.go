@@ -300,6 +300,7 @@ func CreateGrafanaDashboard(grafanaEndpoint, dashboardTitle string) error {
 			"schemaVersion": 16,
 			"version":       0,
 			"refresh":       "5s",
+			"graphTooltip":  1, // Shared crosshair - hovering on one panel shows crosshair on all panels
 			"templating": map[string]interface{}{
 				"list": []map[string]interface{}{
 					{
