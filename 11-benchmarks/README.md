@@ -20,7 +20,7 @@ The goal is to find *the smallest model that won't completely fail you*.
 This benchmark implements a **full factorial design** to systematically explore:
 - **Models**: 4 local models + optional OpenAI GPT-5.1 (if `OPENAI_API_KEY` is set)
 - **Test Cases**: 8 prompts:
-  - 5 standard prompts (code-explanation, mathematical-operations, creative-writing, factual-question, code-generation)
+  - 4 standard prompts (code-explanation, mathematical-operations, factual-question, code-generation)
   - 3 tool-assisted prompts (calculator-reasoning, code-validation, api-data-retrieval) - See [Tool Calling](#tool-calling-functionality) below
 - **Temperatures**: 5 values (0.1, 0.3, 0.5, 0.7, 0.9)
 

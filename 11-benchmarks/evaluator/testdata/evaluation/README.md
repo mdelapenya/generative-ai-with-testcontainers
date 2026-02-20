@@ -21,9 +21,8 @@ Each test case folder contains:
 
 1. **code-explanation**: Evaluates explanations of Go code (Fibonacci)
 2. **mathematical-operations**: Validates arithmetic calculations (sum 1-100)
-3. **creative-writing**: Assesses humor in Fibonacci jokes
-4. **factual-question**: Checks historical knowledge (Toledo translation movement)
-5. **code-generation**: Verifies recursive Fibonacci function generation
+3. **factual-question**: Checks historical knowledge (Toledo translation movement)
+4. **code-generation**: Verifies recursive Fibonacci function generation
 
 ## Adding New Test Cases
 

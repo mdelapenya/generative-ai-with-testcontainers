@@ -264,12 +264,6 @@ var mathSystemPrompt string
 //go:embed testdata/evaluation/mathematical-operations/reference.txt
 var mathReference string
 
-//go:embed testdata/evaluation/creative-writing/system_prompt.txt
-var creativeWritingSystemPrompt string
-
-//go:embed testdata/evaluation/creative-writing/reference.txt
-var creativeWritingReference string
-
 //go:embed testdata/evaluation/factual-question/system_prompt.txt
 var factualQuestionSystemPrompt string
 
@@ -322,11 +316,6 @@ func GetCriteria() map[string]Criteria {
 			TestCaseName: "mathematical-operations",
 			SystemPrompt: strings.TrimSpace(mathSystemPrompt),
 			Reference:    strings.TrimSpace(mathReference),
-		},
-		"creative-writing": {
-			TestCaseName: "creative-writing",
-			SystemPrompt: strings.TrimSpace(creativeWritingSystemPrompt),
-			Reference:    strings.TrimSpace(creativeWritingReference),
 		},
 		"factual-question": {
 			TestCaseName: "factual-question",

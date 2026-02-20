@@ -57,11 +57,6 @@ var (
 			UserPrompt:   "What is the result of sum of all numbers between 1 and 100, both inclusive?",
 		},
 		{
-			Name:         "creative-writing",
-			SystemPrompt: "You are a creative writer with a great sense of humor.",
-			UserPrompt:   "Write an hilarious joke about the Fibonacci sequence.",
-		},
-		{
 			Name:         "factual-question",
 			SystemPrompt: "You are a knowledgeable history expert.",
 			UserPrompt:   "What was the significance of Toledo, Spain during the medieval period, particularly regarding the translation movement?",

@@ -11,7 +11,6 @@ func TestEvaluationCriteriaFiles(t *testing.T) {
 	testCases := []string{
 		"code-explanation",
 		"mathematical-operations",
-		"creative-writing",
 		"factual-question",
 		"code-generation",
 	}
@@ -53,7 +52,6 @@ func TestGetCriteria(t *testing.T) {
 	expectedTestCases := []string{
 		"code-explanation",
 		"mathematical-operations",
-		"creative-writing",
 		"factual-question",
 		"code-generation",
 	}
