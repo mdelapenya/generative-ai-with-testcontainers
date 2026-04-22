@@ -9,8 +9,6 @@ require (
 	github.com/tmc/langchaingo v0.1.14
 )
 
-replace github.com/weaviate/weaviate => github.com/weaviate/weaviate v1.28.8
-
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
